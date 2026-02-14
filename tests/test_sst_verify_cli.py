@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from click.testing import CliRunner
 
+from sst import __version__
 from sst import cli as sst_cli
 
 
@@ -60,6 +61,10 @@ def _fake_regression_report():
             }
         ],
     }
+
+
+def test_cli_version_constant_tracks_package_version():
+    assert sst_cli.VERSION == __version__
 
 
 def test_verify_human_report_and_exit_code_for_regression(tmp_path, monkeypatch):

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import click
 
+from . import __version__ as VERSION
 from .config import refresh_config
 from .errors import SSTError, ScenarioNotFoundError
 from .governance import (
@@ -27,7 +28,6 @@ from .synthesizer import SSTSynthesizer
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.2.0"
 
 
 @click.group(invoke_without_command=True)

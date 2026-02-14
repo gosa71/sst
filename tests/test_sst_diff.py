@@ -87,6 +87,18 @@ def test_structured_diff_rejects_excessive_depth():
         build_structured_diff(baseline, current)
 
 
+def test_human_diff_reorder_hint_handles_unhashable_values():
+    changes = [
+        {"path": "$.items[0]", "change_type": "value_changed", "baseline": {"id": 1}, "current": {"id": 2}},
+        {"path": "$.items[1]", "change_type": "value_changed", "baseline": {"id": 2}, "current": {"id": 1}},
+    ]
+
+    text = format_human_diff(changes)
+
+    assert "Hint: values are identical but order differs" in text
+    assert "list_sort_paths" in text
+
+
 def test_diff_policy_snapshot_is_stable(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text("[tool.sst.diff_policy]\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)

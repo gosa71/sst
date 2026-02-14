@@ -253,6 +253,8 @@ def approve_scenario(path: str, capture_data: Dict[str, Any]) -> BaselineRecord:
     record["metadata"]["approved_at"] = utcnow_iso()
     record["metadata"]["scenario_status"] = "approved"
     record["metadata"]["version_id"] = str(uuid.uuid4())
+    record["metadata"]["diff_policy_snapshot"] = diff_policy_snapshot()
+    record["metadata"]["governance_policy_snapshot"] = governance_policy_snapshot()
     record["approval_history"].append({"approved_at": utcnow_iso(), "action": "approve"})
     save_baseline_record(path, record)
     return record

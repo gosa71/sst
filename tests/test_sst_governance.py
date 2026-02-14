@@ -4,6 +4,7 @@ import pytest
 from sst.config import refresh_config
 from sst.errors import BaselineValidationError, GovernancePolicyError
 from sst.errors import BaselineFormatError
+from sst.diff import diff_policy_snapshot
 from sst.governance import (
     approve_scenario,
     create_baseline_from_capture,
@@ -34,6 +35,23 @@ def test_approve_and_deprecate_updates_history(tmp_path):
 
     assert updated["metadata"]["scenario_status"] == "deprecated"
     assert len(updated["approval_history"]) >= 2
+
+
+def test_reapprove_refreshes_policy_snapshots(tmp_path):
+    path = tmp_path / "m.f_abc.json"
+    capture = {"module": "m", "function": "f", "semantic_id": "abc", "output": {"raw_result": {"x": 1}}}
+
+    approve_scenario(str(path), capture)
+    original = load_baseline_record(str(path))
+
+    original["metadata"]["diff_policy_snapshot"] = {"hash": "stale", "semantics_version": 1}
+    original["metadata"]["governance_policy_snapshot"] = {"hash": "stale"}
+    path.write_text(json.dumps(original), encoding="utf-8")
+
+    updated = approve_scenario(str(path), capture)
+
+    assert updated["metadata"]["diff_policy_snapshot"]["hash"] == diff_policy_snapshot()["hash"]
+    assert updated["metadata"]["governance_policy_snapshot"]["hash"] != "stale"
 
 
 def test_governance_decision_is_explainable():

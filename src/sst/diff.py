@@ -329,21 +329,30 @@ def format_human_diff(changes: List[DiffChange]) -> str:
     # the set of baseline values == the set of current values
     value_changed = [c for c in changes if c["change_type"] == "value_changed"]
     if value_changed:
-        baseline_vals = {c["baseline"] for c in value_changed}
-        current_vals = {c["current"] for c in value_changed}
-        if baseline_vals == current_vals:
-            # Extract common path prefix (e.g. "$.types" from "$.types[0]", "$.types[1]")
-            import re
+        try:
+            baseline_vals = {
+                json.dumps(c["baseline"], sort_keys=True, default=str)
+                for c in value_changed
+            }
+            current_vals = {
+                json.dumps(c["current"], sort_keys=True, default=str)
+                for c in value_changed
+            }
+            if baseline_vals == current_vals:
+                # Extract common path prefix (e.g. "$.types" from "$.types[0]", "$.types[1]")
+                import re
 
-            paths = [c["path"] for c in value_changed]
-            # strip trailing [N] to get parent path
-            parent_paths = list(dict.fromkeys(re.sub(r"\[\d+\]$", "", p) for p in paths))
-            sort_hint = ", ".join(f'"{p}"' for p in parent_paths)
-            lines.append(
-                f"\nHint: values are identical but order differs — this may be non-deterministic ordering.\n"
-                f"If order does not matter, add to [tool.sst.diff_policy] in pyproject.toml:\n"
-                f"  sort_lists_paths = [{sort_hint}]\n"
-                f"If order matters, check for non-determinism in your code: "
-                f"set(), dict (pre-3.7), os.listdir(), DB queries without ORDER BY, parallel tasks."
-            )
+                paths = [c["path"] for c in value_changed]
+                # strip trailing [N] to get parent path
+                parent_paths = list(dict.fromkeys(re.sub(r"\[\d+\]$", "", p) for p in paths))
+                sort_hint = ", ".join(f'"{p}"' for p in parent_paths)
+                lines.append(
+                    f"\nHint: values are identical but order differs — this may be non-deterministic ordering.\n"
+                    f"If order does not matter, add to [tool.sst.diff_policy] in pyproject.toml:\n"
+                    f"  list_sort_paths = [{sort_hint}]\n"
+                    f"If order matters, check for non-determinism in your code: "
+                    f"set(), dict (pre-3.7), os.listdir(), DB queries without ORDER BY, parallel tasks."
+                )
+        except (TypeError, ValueError):
+            pass
     return "\n".join(lines)
