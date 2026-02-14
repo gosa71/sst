@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sst-python"
+version = "0.2.0"
+description = "Semantic Shadow Testing: AI-powered test generation from runtime capture"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "SST-Python Contributors" }]
+requires-python = ">=3.10"
+keywords = ["testing", "regression-testing", "semantic-testing", "observability", "llm"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  "click>=8.0",
+]
+
+[project.optional-dependencies]
+llm = ["openai>=1.0.0", "anthropic>=0.25.0"]
+test = ["pytest>=7.0", "freezegun>=1.2"]
+
+[project.scripts]
+sst = "sst.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/kumaer300-netizen/sst-python"
+Repository = "https://github.com/kumaer300-netizen/sst-python"
+Issues = "https://github.com/kumaer300-netizen/sst-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sst"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+  "integration: integration-level tests that exercise cross-module behavior",
+  "e2e: end-to-end tests for complete CLI lifecycle flows",
+]

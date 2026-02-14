@@ -1,0 +1,100 @@
+{
+  "approval_history": [
+    {
+      "action": "record",
+      "approved_at": "2026-02-12T04:52:31+00:00"
+    }
+  ],
+  "metadata": {
+    "approved_at": "2026-02-12T04:52:31+00:00",
+    "created_at": "2026-02-12T04:52:31+00:00",
+    "diff_policy_snapshot": {
+      "config": {
+        "float_tolerance": 1e-06,
+        "ignored_fields": [
+          "approved_at",
+          "created_at",
+          "duration",
+          "id",
+          "timestamp",
+          "transaction_id",
+          "uuid"
+        ],
+        "ignored_paths": [],
+        "list_sort_paths": [],
+        "mask_timestamps": true,
+        "mask_uuid_like": false,
+        "normalize_string_whitespace": true
+      },
+      "hash": "72c8c1c91991875daea42928b34e8de4b7d0b7ed624ddb9f84e49a4a5075e6fe",
+      "policy_id": "configured-v1",
+      "semantics_version": 1
+    },
+    "format_version": 1,
+    "governance_policy_snapshot": {
+      "hash": "229253b707ba14df460fa6e66ac567721abca114a7e6bcb4c40b7194895c3533",
+      "policy_id": "default-governance-v1",
+      "transitions": [
+        {
+          "action": "approve",
+          "allowed": true,
+          "explanation": "Approved scenario updated with a new version.",
+          "from": "approved",
+          "reason_code": "REAPPROVE_ALLOWED"
+        },
+        {
+          "action": "approve",
+          "allowed": true,
+          "explanation": "Deprecated scenario reactivated and approved.",
+          "from": "deprecated",
+          "reason_code": "REACTIVATE_ALLOWED"
+        },
+        {
+          "action": "approve",
+          "allowed": true,
+          "explanation": "Pending scenario approved and versioned.",
+          "from": "pending",
+          "reason_code": "APPROVE_ALLOWED"
+        },
+        {
+          "action": "deprecate",
+          "allowed": true,
+          "explanation": "Approved scenario marked as deprecated.",
+          "from": "approved",
+          "reason_code": "DEPRECATE_ALLOWED"
+        },
+        {
+          "action": "deprecate",
+          "allowed": true,
+          "explanation": "Scenario already deprecated; action logged for audit.",
+          "from": "deprecated",
+          "reason_code": "NOOP_DEPRECATE"
+        },
+        {
+          "action": "deprecate",
+          "allowed": true,
+          "explanation": "Pending scenario marked as deprecated.",
+          "from": "pending",
+          "reason_code": "DEPRECATE_PENDING_ALLOWED"
+        }
+      ]
+    },
+    "scenario_status": "approved",
+    "version_id": "657c959f-df7d-4976-be94-3c446eb6b2cf"
+  },
+  "scenario": {
+    "engine_version": "0.2.0",
+    "function": "fn",
+    "input": {
+      "args": [],
+      "kwargs": {}
+    },
+    "module": "golden.mod",
+    "output": {
+      "raw_result": {
+        "value": 1
+      }
+    },
+    "semantic_id": "contract1"
+  }
+}
