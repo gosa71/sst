@@ -164,6 +164,7 @@ shadow_dir = ".shadow_data"
 sampling_rate = 1.0
 pii_keys = ["session_token", "internal_id"]
 governance_policy = "default"
+verify_timeout = 600  # seconds
 
 [tool.sst.diff_policy]
 ignored_fields = ["timestamp", "request_id"]
@@ -177,7 +178,7 @@ ignored_paths = ["$.meta.request_id", "$.audit.trace_id"]
 sort_lists = true
 ```
 
-Useful environment overrides include `SST_BASELINE_DIR`, `SST_SHADOW_DIR`, `SST_SAMPLING_RATE`, and `SST_GOVERNANCE_POLICY`.
+Useful environment overrides include `SST_BASELINE_DIR`, `SST_SHADOW_DIR`, `SST_SAMPLING_RATE`, `SST_GOVERNANCE_POLICY`, and `SST_VERIFY_TIMEOUT`.
 
 Policy notes:
 
@@ -215,6 +216,37 @@ sst verify app.py
 ```
 
 If behavior changes, SST fails verification with a semantic diff so you can approve only intentional deltas.
+
+
+### Using Local LLMs
+
+SST supports local LLM providers for test generation without requiring cloud API keys.
+
+#### Ollama
+
+```bash
+export SST_PROVIDER=ollama
+export SST_MODEL=qwen2.5-coder:7b
+sst generate --all
+```
+
+#### LM Studio
+
+```bash
+export SST_PROVIDER=lmstudio
+export SST_MODEL=llama-3.1-8b-instruct
+sst generate --all
+```
+
+#### Custom OpenAI-compatible API (vLLM, LocalAI, etc.)
+
+```bash
+export SST_PROVIDER=local
+export SST_BASE_URL=http://localhost:8000/v1
+export SST_MODEL=your-model-name
+sst generate --all
+```
+
 
 ## Production capture
 

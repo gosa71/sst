@@ -12,11 +12,15 @@ logger = logging.getLogger(__name__)
 _PROVIDER_DEFAULT_MODELS = {
     "openai": "gpt-4o",
     "anthropic": "claude-sonnet-4-20250514",
+    "ollama": "qwen2.5-coder:7b",
+    "lmstudio": "llama-3.1-8b-instruct",
+    "local": "default",
 }
 
 class SSTSynthesizer:
     def __init__(self):
-        self.provider = os.getenv("SST_PROVIDER", "openai")
+        self.provider = os.getenv("SST_PROVIDER", "openai").lower()
+        self.base_url = os.getenv("SST_BASE_URL")
         default_model = _PROVIDER_DEFAULT_MODELS.get(self.provider, "gpt-4o")
         self.model = os.getenv("SST_MODEL", default_model)
 
@@ -84,10 +88,41 @@ Generate ONLY the Python code, no explanations."""
     def _call_llm(self, prompt):
         if self.provider == "openai":
             return self._call_openai(prompt)
-        elif self.provider == "anthropic":
+        if self.provider == "anthropic":
             return self._call_anthropic(prompt)
+        if self.provider in {"ollama", "lmstudio", "local"}:
+            return self._call_local_llm(prompt)
+        raise ValueError(f"Unknown provider: {self.provider}")
+
+
+    def _call_local_llm(self, prompt):
+        from openai import OpenAI
+
+        if self.base_url:
+            base_url = self.base_url
+        elif self.provider == "ollama":
+            base_url = "http://localhost:11434/v1"
+        elif self.provider == "lmstudio":
+            base_url = "http://localhost:1234/v1"
         else:
-            raise ValueError(f"Unknown provider: {self.provider}")
+            raise ValueError(f"Provider '{self.provider}' requires SST_BASE_URL environment variable")
+
+        client = OpenAI(base_url=base_url, api_key="not-needed")
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a Python test generation expert. Output only valid Python code."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=4096,
+        )
+        content = response.choices[0].message.content
+        if content.startswith("```python"):
+            content = content[len("```python"):].strip()
+        if content.endswith("```"):
+            content = content[:-3].strip()
+        return content
 
     def _call_openai(self, prompt):
         from openai import OpenAI

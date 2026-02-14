@@ -30,6 +30,7 @@ class Config:
     max_baseline_size: int = 50 * 1024 * 1024
     clean_shadow_on_record: bool = False
     strict_pii_matching: bool = True
+    verify_timeout: int = 300
 
 
 _ENV_PREFIX = "SST_"
@@ -126,6 +127,7 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
     strict_pii_matching = _to_bool(
         os.getenv(f"{_ENV_PREFIX}STRICT_PII_MATCHING", raw.get("strict_pii_matching", True)), True
     )
+    verify_timeout = _to_int(os.getenv(f"{_ENV_PREFIX}VERIFY_TIMEOUT", raw.get("verify_timeout", 300)), 300)
 
     env_ignored = os.getenv(f"{_ENV_PREFIX}DIFF_IGNORED_FIELDS")
     if env_ignored is not None:
@@ -150,6 +152,7 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         max_baseline_size=max(1, max_baseline_size),
         clean_shadow_on_record=clean_shadow_on_record,
         strict_pii_matching=strict_pii_matching,
+        verify_timeout=max(1, verify_timeout),
     )
 
 
