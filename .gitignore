@@ -1,0 +1,10 @@
+.shadow_data/
+.sst_baseline/
+.test_shadow_data/
+__pycache__/
+*.pyc
+tests/test_*_stub.py
+tests/test_*_auto.py
+.pytest_cache/
+*.zip
+*.egg-info/
