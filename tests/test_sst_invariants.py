@@ -38,3 +38,23 @@ def test_pii_deep_list_masking():
 def test_apply_diff_policy_null_safety():
     """Applying diff policy to None should be null-safe and return None."""
     assert apply_diff_policy(None) is None
+
+
+def test_pii_masking_strict_key_matching_is_exact():
+    normalizer = _CaptureNormalizer(strict_pii_matching=True)
+
+    payload = {"monkey": "value", "token": "abc"}
+    masked = normalizer.mask_pii(payload)
+
+    assert masked["monkey"] == "value"
+    assert masked["token"] == "[MASKED_SENSITIVE_KEY]"
+
+
+def test_pii_masking_non_strict_allows_substring_matching():
+    normalizer = _CaptureNormalizer(strict_pii_matching=False)
+
+    payload = {"monkey": "value", "token": "abc"}
+    masked = normalizer.mask_pii(payload)
+
+    assert masked["monkey"] == "[MASKED_SENSITIVE_KEY]"
+    assert masked["token"] == "[MASKED_SENSITIVE_KEY]"

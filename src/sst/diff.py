@@ -177,6 +177,8 @@ def normalize_for_compare(data: Any, path: str = "$") -> Any:
             return sorted(normalized_list, key=_canonical_sort_key)
         return normalized_list
     if isinstance(data, float):
+        if float_tolerance == 0:
+            return data
         return round(data, decimals)
     if isinstance(data, str):
         if normalize_string_whitespace:

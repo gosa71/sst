@@ -198,3 +198,63 @@ def test_verify_exit_code_2_on_internal_error(tmp_path, monkeypatch):
 
     assert result.exit_code == 2
     assert "SST error [SYSTEM:VERIFY_REPLAY_CAPTURE_FAILED]" in result.output
+
+
+def test_record_warns_when_shadow_dir_not_empty_without_clean(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[tool.sst]\nshadow_dir = "shadow"\nbaseline_dir = "baseline"\n', encoding="utf-8")
+    shadow_dir = tmp_path / "shadow"
+    shadow_dir.mkdir()
+    (shadow_dir / "stale.json").write_text(json.dumps({"module": "old", "function": "fn", "semantic_id": "id", "output": {"raw_result": 1}}), encoding="utf-8")
+
+    app_script = tmp_path / "app.py"
+    app_script.write_text("print('ok')\n", encoding="utf-8")
+
+    monkeypatch.setattr(sst_cli.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+
+    runner = CliRunner()
+    result = runner.invoke(sst_cli.main, ["record", str(app_script)], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "Warning: shadow_dir not empty" in result.output
+    assert (shadow_dir / "stale.json").exists()
+
+
+def test_record_clean_flag_removes_existing_shadow_files(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[tool.sst]\nshadow_dir = "shadow"\nbaseline_dir = "baseline"\n', encoding="utf-8")
+    shadow_dir = tmp_path / "shadow"
+    shadow_dir.mkdir()
+    (shadow_dir / "stale.json").write_text(json.dumps({"module": "old", "function": "fn", "semantic_id": "id", "output": {"raw_result": 1}}), encoding="utf-8")
+
+    app_script = tmp_path / "app.py"
+    app_script.write_text("print('ok')\n", encoding="utf-8")
+
+    monkeypatch.setattr(sst_cli.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+
+    runner = CliRunner()
+    result = runner.invoke(sst_cli.main, ["record", str(app_script), "--clean"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert "Warning: shadow_dir not empty" not in result.output
+    assert not (shadow_dir / "stale.json").exists()
+
+
+def test_verify_capture_failure_includes_stdout_and_stderr(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_baseline(tmp_path)
+    app_script = tmp_path / "app.py"
+    _write_script(app_script)
+
+    monkeypatch.setattr(
+        sst_cli.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=3, stdout=b"hello out", stderr=b"boom err"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(sst_cli.main, ["verify", str(app_script)], catch_exceptions=False)
+
+    assert result.exit_code == 2
+    assert "Stdout: hello out" in result.output
+    assert "Stderr: boom err" in result.output

@@ -109,3 +109,17 @@ def test_diff_policy_snapshot_is_stable(tmp_path, monkeypatch):
 
     assert snap_a["semantics_version"] == 1
     assert snap_a["hash"] == snap_b["hash"]
+
+
+def test_normalize_for_compare_float_tolerance_zero_keeps_exact_float(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.sst.diff_policy]\nfloat_tolerance=0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    refresh_config()
+
+    value = 1.123456789123
+    normalized = normalize_for_compare({"value": value})
+
+    assert normalized["value"] == value

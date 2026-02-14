@@ -29,7 +29,7 @@ __all__ = ["SSTCore", "sst"]
 class _CaptureNormalizer:
     MAX_DEPTH = 100
 
-    def __init__(self, extra_pii_keys=None):
+    def __init__(self, extra_pii_keys=None, strict_pii_matching: bool = True):
         self.pii_patterns = {
             "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
             "card": re.compile(r"\b(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6(?:011|5\d{2})\d{12})\b"),
@@ -40,6 +40,13 @@ class _CaptureNormalizer:
         self.sensitive_keys = {"password", "secret", "token", "api_key", "auth", "key", "credential"}
         if extra_pii_keys:
             self.sensitive_keys.update(k.lower() for k in extra_pii_keys)
+        self.strict_pii_matching = strict_pii_matching
+
+    def _is_sensitive_key(self, key: str) -> bool:
+        key_lower = key.lower()
+        if self.strict_pii_matching:
+            return any(key_lower == sensitive.lower() for sensitive in self.sensitive_keys)
+        return any(sensitive.lower() in key_lower for sensitive in self.sensitive_keys)
 
     def serialize(self, obj: Any, depth: int = 0) -> Any:
         if depth > self.MAX_DEPTH:
@@ -66,7 +73,7 @@ class _CaptureNormalizer:
             for k, v in data.items():
                 masked_dict[k] = (
                     "[MASKED_SENSITIVE_KEY]"
-                    if any(sk in k.lower() for sk in self.sensitive_keys)
+                    if self._is_sensitive_key(k)
                     else self.mask_pii(v, depth + 1)
                 )
             return masked_dict
@@ -107,7 +114,9 @@ class SSTCore:
         self.storage_dir = storage_dir or os.getenv("SST_STORAGE_DIR", self._config.shadow_dir)
         self.baseline_dir = baseline_dir or os.getenv("SST_BASELINE_DIR", self._config.baseline_dir)
         self._env_var = env_var
-        self._normalizer = _CaptureNormalizer(extra_pii_keys=self._config.pii_keys)
+        self._normalizer = _CaptureNormalizer(
+            extra_pii_keys=self._config.pii_keys, strict_pii_matching=self._config.strict_pii_matching
+        )
 
     @staticmethod
     def _env_truthy(name: str, default: str) -> bool:
