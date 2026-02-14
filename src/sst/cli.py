@@ -92,13 +92,22 @@ def clean():
 
 @main.command()
 @click.argument("app_script")
-def record(app_script):
+@click.option("--clean", is_flag=True, default=False, help="Clean shadow_dir before recording to avoid mixing old captures")
+def record(app_script, clean):
     """Record production baseline behavior."""
     if not os.path.exists(app_script):
         click.echo(f"Error: {app_script} not found.")
         return
 
     click.echo(f"Recording baseline from {app_script}...")
+    config = refresh_config()
+    os.makedirs(config.shadow_dir, exist_ok=True)
+    if config.clean_shadow_on_record or clean:
+        shutil.rmtree(config.shadow_dir, ignore_errors=True)
+        os.makedirs(config.shadow_dir, exist_ok=True)
+    elif os.listdir(config.shadow_dir):
+        click.echo("Warning: shadow_dir not empty — may mix old captures")
+
     env = os.environ.copy()
     env["SST_ENABLED"] = "true"
 
@@ -109,7 +118,6 @@ def record(app_script):
         click.echo(f"Warning: Script exited with code {exc.returncode}. Attempting to save partial baseline...")
         process_failed = True
 
-    config = refresh_config()
     os.makedirs(config.baseline_dir, exist_ok=True)
 
     files = glob.glob(os.path.join(config.shadow_dir, "*.json"))
@@ -229,10 +237,24 @@ def _collect_replay_capture(app_script: str, capture_dir: str) -> None:
     env.setdefault("PYTHONHASHSEED", "0")
     env.setdefault("SST_REPLAY_SEED", "0")
 
-    result = subprocess.run(["python3", app_script], capture_output=True, text=True, env=env)
+    result = subprocess.run(["python3", app_script], capture_output=True, env=env)
     if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        detail = f"\n{stderr}" if stderr else ""
+        raw_stdout = getattr(result, "stdout", b"") or b""
+        raw_stderr = getattr(result, "stderr", b"") or b""
+        if isinstance(raw_stdout, str):
+            stdout = raw_stdout.strip()
+        else:
+            stdout = raw_stdout.decode("utf-8", errors="replace").strip()
+        if isinstance(raw_stderr, str):
+            stderr = raw_stderr.strip()
+        else:
+            stderr = raw_stderr.decode("utf-8", errors="replace").strip()
+        details = []
+        if stdout:
+            details.append(f"Stdout: {stdout}")
+        if stderr:
+            details.append(f"Stderr: {stderr}")
+        detail = "\n" + "\n".join(details) if details else ""
         raise SSTError(
             "VERIFY_REPLAY_CAPTURE_FAILED",
             "SYSTEM",

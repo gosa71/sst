@@ -28,6 +28,8 @@ class Config:
     governance_policy: str = "default"
     strict_governance: bool = True
     max_baseline_size: int = 50 * 1024 * 1024
+    clean_shadow_on_record: bool = False
+    strict_pii_matching: bool = True
 
 
 _ENV_PREFIX = "SST_"
@@ -118,6 +120,12 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
     governance_policy = os.getenv(f"{_ENV_PREFIX}GOVERNANCE_POLICY", raw.get("governance_policy", "default"))
     strict_governance = _to_bool(os.getenv(f"{_ENV_PREFIX}STRICT_GOVERNANCE", raw.get("strict_governance", True)), True)
     max_baseline_size = _to_int(raw.get("max_baseline_size", 50 * 1024 * 1024), 50 * 1024 * 1024)
+    clean_shadow_on_record = _to_bool(
+        os.getenv(f"{_ENV_PREFIX}CLEAN_SHADOW_ON_RECORD", raw.get("clean_shadow_on_record", False)), False
+    )
+    strict_pii_matching = _to_bool(
+        os.getenv(f"{_ENV_PREFIX}STRICT_PII_MATCHING", raw.get("strict_pii_matching", True)), True
+    )
 
     env_ignored = os.getenv(f"{_ENV_PREFIX}DIFF_IGNORED_FIELDS")
     if env_ignored is not None:
@@ -140,6 +148,8 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         governance_policy=str(governance_policy),
         strict_governance=strict_governance,
         max_baseline_size=max(1, max_baseline_size),
+        clean_shadow_on_record=clean_shadow_on_record,
+        strict_pii_matching=strict_pii_matching,
     )
 
 

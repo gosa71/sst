@@ -56,3 +56,26 @@ def test_diff_policy_uses_configured_ignored_fields(tmp_path, monkeypatch):
 
     assert filtered == {"stable": 1}
     assert normalized["value"] == 3.14
+
+
+def test_config_defaults_include_new_polish_flags(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    cfg = refresh_config()
+
+    assert cfg.clean_shadow_on_record is False
+    assert cfg.strict_pii_matching is True
+
+
+def test_config_loads_new_polish_flags_from_pyproject(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.sst]\nclean_shadow_on_record=true\nstrict_pii_matching=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    cfg = refresh_config()
+
+    assert cfg.clean_shadow_on_record is True
+    assert cfg.strict_pii_matching is False
