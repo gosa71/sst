@@ -96,6 +96,20 @@ class TestSerialization:
         assert result["y"] == "bar"
 
 
+    def test_serialize_respects_max_depth(self, sst_instance):
+        deep = value = {}
+        for i in range(105):
+            value["n"] = {}
+            value = value["n"]
+
+        serialized = sst_instance._serialize(deep)
+
+        cursor = serialized
+        for _ in range(101):
+            cursor = cursor["n"]
+        assert cursor == "[MAX_DEPTH_REACHED]"
+
+
 class TestSemanticHash:
     def test_same_input_same_hash(self, sst_instance):
         data1 = {"a": 1, "b": 2}
@@ -171,6 +185,30 @@ class TestVerifyBaseline:
         # Verify — same input, same output, should not raise
         with patch.dict(os.environ, {"SST_VERIFY": "true"}):
             greet("World")
+
+
+    def test_runtime_verify_applies_same_normalization_as_cli(self, sst_instance, temp_dirs):
+        shadow_dir, baseline_dir = temp_dirs
+
+        @sst_instance.capture
+        def compute():
+            return {"value": 1.0000001, "created_at": "2025-01-01T00:00:00Z"}
+
+        baseline_data = {
+            "output": {
+                "raw_result": {"value": 1.0, "created_at": "2024-01-01T00:00:00Z"},
+                "status": "success",
+            }
+        }
+
+        masked_inputs = sst_instance._mask_pii(sst_instance._serialize({"args": [], "kwargs": {}}))
+        semantic_id = sst_instance._get_semantic_hash(masked_inputs)
+        baseline_path = os.path.join(baseline_dir, f"test_sst_meta.compute_{semantic_id}.json")
+        with open(baseline_path, "w", encoding="utf-8") as f:
+            json.dump(baseline_data, f)
+
+        with patch.dict(os.environ, {"SST_VERIFY": "true"}):
+            assert compute() == {"value": 1.0000001, "created_at": "2025-01-01T00:00:00Z"}
 
     def test_regression_detected(self, sst_instance, temp_dirs):
         shadow_dir, baseline_dir = temp_dirs

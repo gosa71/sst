@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 
 from . import __version__
 from .config import get_config
-from .diff import apply_diff_policy, build_structured_diff, format_human_diff, summarize_changes
+from .diff import apply_diff_policy, build_structured_diff, format_human_diff, normalize_for_compare, summarize_changes
 from .errors import CaptureContractError, RegressionDetectedError
 from .governance import load_baseline_record
 from .types import CaptureOutput, CapturePayload
@@ -41,15 +41,17 @@ class _CaptureNormalizer:
         if extra_pii_keys:
             self.sensitive_keys.update(k.lower() for k in extra_pii_keys)
 
-    def serialize(self, obj: Any) -> Any:
+    def serialize(self, obj: Any, depth: int = 0) -> Any:
+        if depth > self.MAX_DEPTH:
+            return "[MAX_DEPTH_REACHED]"
         if isinstance(obj, (str, int, float, bool, type(None))):
             return obj
         if isinstance(obj, dict):
-            return {str(k): self.serialize(v) for k, v in obj.items()}
+            return {str(k): self.serialize(v, depth + 1) for k, v in obj.items()}
         if isinstance(obj, (list, tuple, set)):
-            return [self.serialize(i) for i in obj]
+            return [self.serialize(i, depth + 1) for i in obj]
         if hasattr(obj, "__dict__"):
-            return {"__class__": obj.__class__.__name__, **self.serialize(obj.__dict__)}
+            return {"__class__": obj.__class__.__name__, **self.serialize(obj.__dict__, depth + 1)}
         return repr(obj)
 
     def mask_pii(self, data: Any, depth: int = 0) -> Any:
@@ -155,8 +157,8 @@ class SSTCore:
             return
         baseline_output = baseline_record["scenario"].get("output", {}).get("raw_result")
 
-        filtered_result = apply_diff_policy(masked_result)
-        filtered_baseline = apply_diff_policy(baseline_output)
+        filtered_result = normalize_for_compare(apply_diff_policy(masked_result))
+        filtered_baseline = normalize_for_compare(apply_diff_policy(baseline_output))
 
         if filtered_result != filtered_baseline:
             structured_diff = self._build_structured_diff(filtered_baseline, filtered_result)
