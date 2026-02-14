@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["SSTCore", "sst"]
 
+MAX_STRING_LENGTH_FOR_REGEX = 10000
+
 
 class _CaptureNormalizer:
     MAX_DEPTH = 100
@@ -65,6 +67,13 @@ class _CaptureNormalizer:
         if depth > self.MAX_DEPTH:
             return "[MAX_DEPTH_REACHED]"
         if isinstance(data, str):
+            if len(data) > MAX_STRING_LENGTH_FOR_REGEX:
+                logger.debug(
+                    "SST: Skipping PII masking for string of length %s (exceeds %s)",
+                    len(data),
+                    MAX_STRING_LENGTH_FOR_REGEX,
+                )
+                return data
             for label, pattern in self.pii_patterns.items():
                 data = pattern.sub(f"[MASKED_{label.upper()}]", data)
             return data
@@ -78,15 +87,7 @@ class _CaptureNormalizer:
                 )
             return masked_dict
         if isinstance(data, list):
-            masked_list = []
-            for item in data:
-                if isinstance(item, str):
-                    for label, pattern in self.pii_patterns.items():
-                        item = pattern.sub(f"[MASKED_{label.upper()}]", item)
-                    masked_list.append(item)
-                else:
-                    masked_list.append(self.mask_pii(item, depth + 1))
-            return masked_list
+            return [self.mask_pii(item, depth + 1) for item in data]
         return data
 
 
@@ -185,12 +186,20 @@ class SSTCore:
             source = textwrap.dedent(inspect.getsource(func))
             tree = ast.parse(source)
             calls = []
+
+            def get_full_name(node):
+                if isinstance(node, ast.Name):
+                    return node.id
+                if isinstance(node, ast.Attribute):
+                    base = get_full_name(node.value)
+                    return f"{base}.{node.attr}" if base else node.attr
+                return None
+
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call):
-                    if isinstance(node.func, ast.Attribute):
-                        calls.append(node.func.attr)
-                    elif isinstance(node.func, ast.Name):
-                        calls.append(node.func.id)
+                    full_name = get_full_name(node.func)
+                    if full_name:
+                        calls.append(full_name)
             return list(set(calls))
         except Exception:
             return []

@@ -49,10 +49,13 @@ def main(ctx, version):
 @click.option("--all", "generate_all", is_flag=True, help="Generate tests for all captured functions")
 @click.option("--output-dir", default="tests/", help="Output directory")
 @click.option("--model", help="Override the LLM model (sets SST_MODEL env var)")
-@click.option("--provider", help="LLM provider: openai, anthropic (sets SST_PROVIDER env var)")
+@click.option("--provider", help="LLM provider: openai, anthropic, ollama, lmstudio, local (sets SST_PROVIDER env var)")
 @click.option("--edit", is_flag=True, help="Open generated tests in editor for quick-fix")
 def generate(func, generate_all, output_dir, model, provider, edit):
-    """Generate Pytest files from captured data."""
+    """Generate Pytest files from captured data.
+
+    Providers: openai, anthropic, ollama, lmstudio, local.
+    """
     config = refresh_config()
     if not os.path.exists(config.shadow_dir) or not any(fname.endswith(".json") for fname in os.listdir(config.shadow_dir)):
         click.echo(f"Error: No captured data found in {config.shadow_dir}. Run your app with SST_ENABLED=true first.")
@@ -113,7 +116,7 @@ def record(app_script, clean):
 
     process_failed = False
     try:
-        subprocess.run(["python3", app_script], check=True, env=env)
+        subprocess.run([sys.executable, app_script], check=True, env=env)
     except subprocess.CalledProcessError as exc:
         click.echo(f"Warning: Script exited with code {exc.returncode}. Attempting to save partial baseline...")
         process_failed = True
@@ -237,7 +240,16 @@ def _collect_replay_capture(app_script: str, capture_dir: str) -> None:
     env.setdefault("PYTHONHASHSEED", "0")
     env.setdefault("SST_REPLAY_SEED", "0")
 
-    result = subprocess.run(["python3", app_script], capture_output=True, env=env)
+    timeout = refresh_config().verify_timeout
+
+    try:
+        result = subprocess.run([sys.executable, app_script], capture_output=True, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise SSTError(
+            "VERIFY_TIMEOUT",
+            "SYSTEM",
+            f"Verify script {app_script} exceeded timeout of {timeout}s. Increase SST_VERIFY_TIMEOUT if needed."
+        ) from exc
     if result.returncode != 0:
         raw_stdout = getattr(result, "stdout", b"") or b""
         raw_stderr = getattr(result, "stderr", b"") or b""
