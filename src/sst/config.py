@@ -64,6 +64,12 @@ def _load_toml(path: Path) -> Dict[str, Any]:
 
                 return rtoml.loads(path.read_text(encoding="utf-8"))
             except ModuleNotFoundError:
+                logger.warning(
+                    "SST: No TOML parser available (tomllib/tomli/rtoml). "
+                    "Configuration from %s will be ignored. "
+                    "Install 'tomli' to enable pyproject.toml support on Python < 3.11.",
+                    path,
+                )
                 return {}
 
 

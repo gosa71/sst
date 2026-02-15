@@ -237,6 +237,7 @@ def _collect_replay_capture(app_script: str, capture_dir: str) -> None:
     env = os.environ.copy()
     env["SST_ENABLED"] = "true"
     env["SST_STORAGE_DIR"] = capture_dir
+    env["SST_SAMPLING_RATE"] = "1.0"
     env.setdefault("PYTHONHASHSEED", "0")
     env.setdefault("SST_REPLAY_SEED", "0")
 
