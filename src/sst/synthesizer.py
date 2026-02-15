@@ -52,12 +52,19 @@ class SSTSynthesizer:
     def _build_prompt(self, func_key, scenarios):
         source = scenarios[0].get("source", "# source not available")
         deps = scenarios[0].get("dependencies", [])
-        
+        exec_meta = scenarios[0].get("execution_metadata", {})
+        python_version = exec_meta.get("python_version", "unknown")
+
         scenario_text = ""
         for i, s in enumerate(scenarios):
-            scenario_text += f"\n--- Scenario {i+1} ---\n"
+            status = s["output"].get("status", "unknown")
+            scenario_text += f"\n--- Scenario {i+1} (status: {status}) ---\n"
             scenario_text += f"Input: {json.dumps(s['input'], indent=2)}\n"
-            scenario_text += f"Output: {json.dumps(s['output'], indent=2)}\n"
+            if status == "success":
+                scenario_text += f"Expected output: {json.dumps(s['output'].get('raw_result'), indent=2)}\n"
+            else:
+                scenario_text += f"Expected exception: {s['output'].get('error_type', 'Exception')}\n"
+                scenario_text += f"Exception message: {s['output'].get('error', '')}\n"
 
         prompt = f"""You are a senior Python test engineer. Generate a complete, runnable Pytest test file.
 
@@ -66,24 +73,41 @@ class SSTSynthesizer:
 {source}
 ```
 
-## Dependencies detected: {deps}
+## Runtime context
+- Python version: {python_version}
+- Detected dependencies: {deps}
+- Total captured scenarios: {len(scenarios)}
 
-## Captured Scenarios (PII already masked)
+## Captured Scenarios (PII already masked — do not assert on masked values)
 {scenario_text}
 
 ## Instructions
-1. Generate a Pytest file that tests the function `{func_key.split('.')[-1]}`.
-2. Use `freezegun` to freeze time if the output contains timestamps.
-3. Use `unittest.mock.patch` to mock `random.randint` or any non-deterministic calls.
-4. For each scenario, write a separate test function.
-5. Assert on the STRUCTURE and DETERMINISTIC values of the output.
-6. Skip assertions on masked PII values - just check they exist and are strings.
-7. Include proper imports at the top.
-8. Make the tests self-contained and runnable with `pytest`.
+1. Generate a Pytest file that tests `{func_key.split('.')[-1]}`.
+2. Write one test function per scenario, named `test_{func_key.split('.')[-1]}_scenario_N`.
+3. For success scenarios: assert on the structure and deterministic values of the output dict.
+4. For failure scenarios: use `pytest.raises(ExceptionType)` with the correct exception type.
+5. Use `unittest.mock.patch` to mock any non-deterministic calls (random, datetime, uuid).
+6. Use `freezegun.freeze_time` if output contains timestamps.
+7. Skip assertions on values that are masked strings like `[MASKED_EMAIL]` — only check they are strings.
+8. Include all required imports at the top.
+9. Do NOT use self-correction or retry logic — generate correct code on the first attempt.
+10. Output ONLY valid Python code, no explanations, no markdown fences.
 
-Generate ONLY the Python code, no explanations."""
+The output must be syntactically valid Python that passes `python -m py_compile`."""
 
         return prompt
+
+    def _validate_syntax(self, code: str, func_key: str) -> bool:
+        """Return True if code is valid Python syntax, False otherwise."""
+        try:
+            compile(code, f"<generated:{func_key}>", "exec")
+            return True
+        except SyntaxError as e:
+            logger.warning(
+                "SST: Generated test for '%s' has syntax error at line %d: %s",
+                func_key, e.lineno, e.msg
+            )
+            return False
 
     def _call_llm(self, prompt):
         if self.provider == "openai":
@@ -183,6 +207,10 @@ Generate ONLY the Python code, no explanations."""
             except Exception as e:
                 print(f"  LLM call failed: {e}")
                 print("  Generating fallback template...")
+                test_code = self._generate_fallback(func_key, scenarios)
+
+            if not self._validate_syntax(test_code, func_key):
+                print(f"  Warning: generated code has syntax errors — falling back to template")
                 test_code = self._generate_fallback(func_key, scenarios)
 
             safe_name = func_key.replace(".", "_")
