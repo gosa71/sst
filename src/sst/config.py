@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -17,6 +18,8 @@ DEFAULT_DIFF_POLICY: Dict[str, Any] = {
     "normalize_string_whitespace": True,
 }
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -24,6 +27,7 @@ class Config:
     shadow_dir: str = ".shadow_data"
     sampling_rate: float = 1.0
     pii_keys: list[str] = field(default_factory=list)
+    pii_patterns: list[dict] = field(default_factory=list)
     diff_policy: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_DIFF_POLICY))
     governance_policy: str = "default"
     strict_governance: bool = True
@@ -118,6 +122,13 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
     shadow_dir = os.getenv(f"{_ENV_PREFIX}SHADOW_DIR", raw.get("shadow_dir", ".shadow_data"))
     sampling_rate = _to_float(os.getenv(f"{_ENV_PREFIX}SAMPLING_RATE", raw.get("sampling_rate", 1.0)), 1.0)
     pii_keys = _to_list(os.getenv(f"{_ENV_PREFIX}PII_KEYS", raw.get("pii_keys", [])), [])
+    raw_pii_patterns = raw.get("pii_patterns", [])
+    pii_patterns = []
+    for entry in raw_pii_patterns:
+        if isinstance(entry, dict) and "label" in entry and "pattern" in entry:
+            pii_patterns.append({"label": str(entry["label"]), "pattern": str(entry["pattern"])})
+        else:
+            logger.warning("SST: Skipping invalid pii_patterns entry: %s", entry)
     governance_policy = os.getenv(f"{_ENV_PREFIX}GOVERNANCE_POLICY", raw.get("governance_policy", "default"))
     strict_governance = _to_bool(os.getenv(f"{_ENV_PREFIX}STRICT_GOVERNANCE", raw.get("strict_governance", True)), True)
     max_baseline_size = _to_int(raw.get("max_baseline_size", 50 * 1024 * 1024), 50 * 1024 * 1024)
@@ -146,6 +157,7 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         shadow_dir=str(shadow_dir),
         sampling_rate=max(0.0, min(1.0, sampling_rate)),
         pii_keys=pii_keys,
+        pii_patterns=pii_patterns,
         diff_policy=diff_policy,
         governance_policy=str(governance_policy),
         strict_governance=strict_governance,

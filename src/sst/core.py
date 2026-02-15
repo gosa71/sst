@@ -31,7 +31,7 @@ MAX_STRING_LENGTH_FOR_REGEX = 10000
 class _CaptureNormalizer:
     MAX_DEPTH = 100
 
-    def __init__(self, extra_pii_keys=None, strict_pii_matching: bool = True):
+    def __init__(self, extra_pii_keys=None, strict_pii_matching: bool = True, extra_pii_patterns=None):
         self.pii_patterns = {
             "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
             "card": re.compile(r"\b(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6(?:011|5\d{2})\d{12})\b"),
@@ -42,6 +42,13 @@ class _CaptureNormalizer:
         self.sensitive_keys = {"password", "secret", "token", "api_key", "auth", "key", "credential"}
         if extra_pii_keys:
             self.sensitive_keys.update(k.lower() for k in extra_pii_keys)
+        if extra_pii_patterns:
+            for entry in extra_pii_patterns:
+                label = entry["label"].lower()
+                try:
+                    self.pii_patterns[label] = re.compile(entry["pattern"])
+                except re.error as e:
+                    logger.warning("SST: Invalid custom PII pattern '%s': %s", entry["label"], e)
         self.strict_pii_matching = strict_pii_matching
 
     def _is_sensitive_key(self, key: str) -> bool:
@@ -116,7 +123,9 @@ class SSTCore:
         self.baseline_dir = baseline_dir or os.getenv("SST_BASELINE_DIR", self._config.baseline_dir)
         self._env_var = env_var
         self._normalizer = _CaptureNormalizer(
-            extra_pii_keys=self._config.pii_keys, strict_pii_matching=self._config.strict_pii_matching
+            extra_pii_keys=self._config.pii_keys,
+            strict_pii_matching=self._config.strict_pii_matching,
+            extra_pii_patterns=self._config.pii_patterns,
         )
 
     @staticmethod
