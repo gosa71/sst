@@ -58,6 +58,22 @@ class _CaptureNormalizer:
         return any(sensitive.lower() in key_lower for sensitive in self.sensitive_keys)
 
     def serialize(self, obj: Any, depth: int = 0) -> Any:
+        """Recursively serialize obj to a JSON-compatible structure.
+
+        Custom classes can implement ``__sst_serialize__(self) -> Any`` to control
+        how their instances are captured. The method should return a JSON-serializable
+        value (dict, list, str, int, float, bool, or None).
+
+        Example::
+
+            class Money:
+                def __init__(self, amount, currency):
+                    self.amount = amount
+                    self.currency = currency
+
+                def __sst_serialize__(self):
+                    return {"amount": self.amount, "currency": self.currency}
+        """
         if depth > self.MAX_DEPTH:
             return "[MAX_DEPTH_REACHED]"
         if isinstance(obj, (str, int, float, bool, type(None))):
@@ -66,9 +82,11 @@ class _CaptureNormalizer:
             return {str(k): self.serialize(v, depth + 1) for k, v in obj.items()}
         if isinstance(obj, (list, tuple, set)):
             return [self.serialize(i, depth + 1) for i in obj]
+        if hasattr(obj, "__sst_serialize__"):
+            return self.serialize(obj.__sst_serialize__(), depth + 1)
         if hasattr(obj, "__dict__"):
             return {"__class__": obj.__class__.__name__, **self.serialize(obj.__dict__, depth + 1)}
-        return repr(obj)
+        return {"__class__": obj.__class__.__name__, "__repr__": repr(obj)}
 
     def mask_pii(self, data: Any, depth: int = 0) -> Any:
         if depth > self.MAX_DEPTH:
