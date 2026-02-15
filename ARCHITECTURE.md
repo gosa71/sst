@@ -18,7 +18,7 @@ flowchart LR
 
 ### Layer responsibilities
 
-- **Capture**: serializes function inputs/outputs, masks PII, assigns `semantic_id`, and writes JSON artifacts in the shadow directory.
+- **Capture**: serializes function inputs/outputs via `_CaptureNormalizer.serialize`, masks PII, assigns `semantic_id`, and writes JSON artifacts in the shadow directory. Custom classes can implement `__sst_serialize__(self) -> Any` to control serialization; SST calls it before falling back to `__dict__` introspection or a structured `{"__class__", "__repr__"}` fallback.
 - **Replay**: aligns baseline and current captures by deterministic scenario key (`module.function:semantic_id`) and compares outputs.
 - **Diff**: applies configured suppression/normalization policy, then computes path-aware structured changes.
 - **Governance**: stores baseline status/version metadata, validates allowed transition actions, and preserves audit history.
@@ -41,6 +41,17 @@ Implications:
 - **Input-centric identity**: changing only output behavior keeps the same `semantic_id`, which is exactly what regression checks need.
 - **Type-aware collision resistance**: canonicalization includes primitive type names (`int:1` and `str:1` are distinct) to prevent cross-type collisions in semantic IDs.
 - **PII-safe hashing**: IDs derive from masked payloads, so raw sensitive values are not embedded in baseline identity.
+
+## Serialization protocol
+
+SST serializes captured values through `_CaptureNormalizer.serialize` with the following priority chain:
+
+1. **Primitives** (`str`, `int`, `float`, `bool`, `None`) — passed through as-is.
+2. **`__sst_serialize__`** — if the object implements this method, SST calls it and recurses on the result. Opt-in, highest priority for custom types.
+3. **`__dict__`** — standard Python objects are serialized as `{"__class__": "Name", ...fields}`.
+4. **Structured fallback** — objects with neither `__sst_serialize__` nor `__dict__` are serialized as `{"__class__": "Name", "__repr__": "..."}`. The `__repr__` value may be non-deterministic for some types; implement `__sst_serialize__` when stable `semantic_id` is required.
+
+All paths are recursion-safe and bounded by `MAX_DEPTH = 100`.
 
 ## Diff policy model
 
@@ -162,6 +173,8 @@ The governance loader has explicit migration hooks (`_migrate_record_for_version
 ### 4) Capture-level sampling and placement
 
 Capture can be tuned per function with `@sst.capture(sampling_rate=...)` and globally with config/env overrides. This is the primary extension point for balancing observability vs overhead in production paths.
+
+`sst verify` always overrides `SST_SAMPLING_RATE=1.0` in the subprocess environment it spawns. This guarantees the regression gate captures every decorated call regardless of the project's configured sampling rate. Production sampling is intentionally isolated from verification completeness.
 
 ## Versioning and Compatibility Guarantees
 

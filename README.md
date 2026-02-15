@@ -163,6 +163,12 @@ baseline_dir = ".sst_baseline"
 shadow_dir = ".shadow_data"
 sampling_rate = 1.0
 pii_keys = ["session_token", "internal_id"]
+pii_patterns = [
+    {label = "passport_ru", pattern = "\\d{4}\\s\\d{6}"},
+    {label = "inn", pattern = "\\b\\d{10}\\b"},
+    {label = "snils", pattern = "\\d{3}-\\d{3}-\\d{3}\\s\\d{2}"}
+]
+strict_pii_matching = true  # true = exact key match; false = substring match
 governance_policy = "default"
 verify_timeout = 600  # seconds
 
@@ -185,6 +191,8 @@ Policy notes:
 - Prefer `ignored_paths` when volatile fields are nested and you need precise suppression without dropping whole objects.
 - Use `sort_lists = true` when APIs return semantically identical arrays in varying order.
 - PII masking is recursive by default and traverses nested dict/list payloads automatically, so deep sensitive values are still protected.
+- Use `pii_patterns` to add domain-specific regex patterns (e.g. national ID formats, internal codes) beyond the built-in set. Invalid patterns are skipped with a warning and never raise.
+- Set `strict_pii_matching = false` to catch compound key names like `old_password` or `user_token` in addition to exact matches.
 
 ## First Run: Hello World in 3 Steps
 
@@ -324,6 +332,8 @@ SST hardens production use with built-in recursion protection (`MAX_DEPTH`) and 
 - Increase temporarily during launches/migrations to collect richer behavior.
 - Use per-function overrides (`@sst.capture(sampling_rate=...)`) when one module needs finer coverage than the global default.
 
+Note: `sst verify` always forces `sampling_rate=1.0` internally regardless of your configured value. This ensures the regression gate always sees the full scenario set. Your production sampling rate only affects live capture, never verification.
+
 ### 4) Baseline migration strategy
 
 - Treat baseline updates as controlled change events.
@@ -380,6 +390,26 @@ Generate a full Pytest suite from your captured data:
 ```bash
 sst generate --all --provider anthropic --edit
 ```
+
+### Serializing Custom Objects
+
+SST serializes function inputs and outputs to JSON for capture and comparison. For standard Python types (dicts, lists, primitives, dataclasses) this works automatically.
+
+For objects that do not have a `__dict__` or whose `repr()` is non-deterministic (e.g. includes memory addresses), implement the `__sst_serialize__` protocol:
+
+```python
+class Money:
+    def __init__(self, amount: int, currency: str):
+        self.amount = amount
+        self.currency = currency
+
+    def __sst_serialize__(self) -> dict:
+        return {"amount": self.amount, "currency": self.currency}
+```
+
+SST calls `__sst_serialize__()` before falling back to `__dict__` introspection. The method should return any JSON-serializable value (dict, list, str, int, float, bool, or None).
+
+Objects without `__sst_serialize__` and without `__dict__` are serialized as `{"__class__": "ClassName", "__repr__": "..."}` — stable enough for auditing but not guaranteed deterministic. Implement `__sst_serialize__` when deterministic `semantic_id` is required for custom types.
 
 ### Getting Started with AI Synthesis
 
