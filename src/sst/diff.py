@@ -342,8 +342,6 @@ def format_human_diff(changes: List[DiffChange]) -> str:
             }
             if baseline_vals == current_vals:
                 # Extract common path prefix (e.g. "$.types" from "$.types[0]", "$.types[1]")
-                import re
-
                 paths = [c["path"] for c in value_changed]
                 # strip trailing [N] to get parent path
                 parent_paths = list(dict.fromkeys(re.sub(r"\[\d+\]$", "", p) for p in paths))
