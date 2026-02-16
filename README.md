@@ -454,7 +454,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## GitHub Repository
 
-Contribute to the future of behavioral testing on [GitHub](https://github.com/kumaer300-netizen/sst-python).
+Contribute to the future of behavioral testing on [GitHub](https://github.com/gosa71/sst).
 
 ## Versioning and Compatibility Guarantees
 
