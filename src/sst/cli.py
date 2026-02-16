@@ -132,9 +132,13 @@ def record(app_script, clean):
             logger.warning("Skipping corrupted JSON file %s: %s", file_path, exc)
             continue
 
-        baseline_name = f"{capture_data['module']}.{capture_data['function']}_{capture_data['semantic_id']}.json"
-        baseline_record = create_baseline_from_capture(capture_data)
-        save_baseline_record(os.path.join(config.baseline_dir, baseline_name), baseline_record)
+        try:
+            baseline_name = f"{capture_data['module']}.{capture_data['function']}_{capture_data['semantic_id']}.json"
+            baseline_record = create_baseline_from_capture(capture_data)
+            save_baseline_record(os.path.join(config.baseline_dir, baseline_name), baseline_record)
+        except KeyError as exc:
+            logger.warning("Skipping capture file %s: missing required field %s", file_path, exc)
+            continue
 
     if process_failed and not files:
         click.echo("Error: Script failed and no captures were saved.")
