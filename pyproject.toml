@@ -46,4 +46,5 @@ pythonpath = ["src"]
 markers = [
   "integration: integration-level tests that exercise cross-module behavior",
   "e2e: end-to-end tests for complete CLI lifecycle flows",
+  "asyncio: asyncio compatibility marker for coroutine-style test coverage",
 ]

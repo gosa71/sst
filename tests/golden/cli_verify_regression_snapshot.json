@@ -1,0 +1,15 @@
+{
+  "summary": {
+    "baseline_count": 1,
+    "capture_count": 1,
+    "mismatch_count": 1
+  },
+  "scenarios": [
+    {
+      "scenario_id": "__main__.produce:<SID>",
+      "status": "fail",
+      "has_diff": true
+    }
+  ],
+  "exit_code": 1
+}
