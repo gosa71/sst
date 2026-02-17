@@ -2,6 +2,7 @@ import glob
 import json
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -284,6 +285,14 @@ def _run_verify_pipeline(app_script: str) -> ReplayReport:
     with tempfile.TemporaryDirectory(prefix="sst_verify_") as capture_dir:
         _collect_replay_capture(app_script, capture_dir)
         config = refresh_config()
+        shadow = Path(config.shadow_dir)
+        shadow.mkdir(parents=True, exist_ok=True)
+        for item in Path(capture_dir).glob("*"):
+            target = shadow / item.name
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, target)
         engine = ReplayEngine(baseline_dir=config.baseline_dir, capture_dir=capture_dir)
         return engine.replay()
 
