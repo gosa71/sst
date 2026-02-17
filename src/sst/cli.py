@@ -125,6 +125,7 @@ def record(app_script, clean):
     os.makedirs(config.baseline_dir, exist_ok=True)
 
     files = glob.glob(os.path.join(config.shadow_dir, "*.json"))
+    saved_count = 0
     for file_path in files:
         try:
             with open(file_path, "r", encoding="utf-8") as handle:
@@ -137,6 +138,7 @@ def record(app_script, clean):
             baseline_name = f"{capture_data['module']}.{capture_data['function']}_{capture_data['semantic_id']}.json"
             baseline_record = create_baseline_from_capture(capture_data)
             save_baseline_record(os.path.join(config.baseline_dir, baseline_name), baseline_record)
+            saved_count += 1
         except KeyError as exc:
             logger.warning("Skipping capture file %s: missing required field %s", file_path, exc)
             continue
@@ -145,7 +147,7 @@ def record(app_script, clean):
         click.echo("Error: Script failed and no captures were saved.")
         return
 
-    click.echo(f"Baseline recorded: {len(files)} scenarios saved to {config.baseline_dir}/")
+    click.echo(f"Baseline recorded: {saved_count} scenarios saved to {config.baseline_dir}/")
 
 
 def _verify_timestamp() -> str:
