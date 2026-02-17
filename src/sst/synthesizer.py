@@ -238,7 +238,7 @@ from {module_name} import {func_name}
             code += f'''\
 def test_{func_name}_scenario_{i+1}():
     """Auto-generated from captured shadow data."""
-    # Input: {json.dumps(s["input"], indent=4)}
+    # Input: {json.dumps(s["input"])}
     # Expected output status: {s["output"].get("status", "unknown")}
     # TODO: Fill in the test logic based on the captured data above.
     pass
