@@ -35,7 +35,14 @@ class _CaptureNormalizer:
         self.pii_patterns = {
             "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
             "card": re.compile(r"\b(?:4\d{12}(?:\d{3})?|5[1-5]\d{14}|3[47]\d{13}|6(?:011|5\d{2})\d{12})\b"),
-            "phone": re.compile(r"(?:\+?\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}"),
+            "phone": re.compile(
+                r"(?:"
+                r"\+\d{1,3}[\s\-]?\(?\d{1,4}\)?(?:[\s\-]\d{2,5}){1,3}"
+                r"|\+\d{1,3}\(\d{3}\)\d{3}[\-]?\d{2}[\-]?\d{2}"
+                r"|\(\d{3}\)\s*\d{3}[\s\-]\d{4}"
+                r"|\b\d{3}[\-]\d{3}[\-]\d{4}\b"
+                r")"
+            ),
             "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
             "ipv4": re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
         }
