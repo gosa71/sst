@@ -41,7 +41,7 @@ class _CaptureNormalizer:
                 r"\+\d{1,3}[\s\-]?\(?\d{1,4}\)?(?:[\s\-]\d{2,5}){1,3}"
                 r"|\+\d{1,3}\(\d{3}\)\d{3}[\-]?\d{2}[\-]?\d{2}"
                 r"|\(\d{3}\)\s*\d{3}[\s\-]\d{4}"
-                r"|\b\d{3}[\-]\d{3}[\-]\d{4}\b"
+                r"|(?<![A-Za-z\-])\b\d{3}[\-]\d{3}[\-]\d{4}\b"
                 r")"
             ),
             "ssn": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
@@ -98,7 +98,7 @@ class _CaptureNormalizer:
 
     def mask_pii(self, data: Any, depth: int = 0) -> Any:
         if depth > self.MAX_DEPTH:
-            return "[MAX_DEPTH_REACHED]"
+            return self.TRUNCATION_SENTINEL
         if isinstance(data, str):
             if len(data) > MAX_STRING_LENGTH_FOR_REGEX:
                 logger.debug(
@@ -131,7 +131,7 @@ class _Fingerprint:
     def semantic_hash(data: Any) -> str:
         def canonicalize(obj, depth: int = 0):
             if depth > _Fingerprint.MAX_DEPTH:
-                return "[MAX_DEPTH_REACHED]"
+                return self.TRUNCATION_SENTINEL
             if isinstance(obj, dict):
                 return {k: canonicalize(v, depth + 1) for k, v in sorted(obj.items())}
             if isinstance(obj, list):
