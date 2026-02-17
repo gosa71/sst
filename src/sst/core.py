@@ -131,7 +131,7 @@ class _Fingerprint:
     def semantic_hash(data: Any) -> str:
         def canonicalize(obj, depth: int = 0):
             if depth > _Fingerprint.MAX_DEPTH:
-                return self.TRUNCATION_SENTINEL
+                return {"__sst_truncated__": "MAX_DEPTH_REACHED"}
             if isinstance(obj, dict):
                 return {k: canonicalize(v, depth + 1) for k, v in sorted(obj.items())}
             if isinstance(obj, list):
