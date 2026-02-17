@@ -107,7 +107,24 @@ class TestSerialization:
         cursor = serialized
         for _ in range(101):
             cursor = cursor["n"]
-        assert cursor == "[MAX_DEPTH_REACHED]"
+        assert cursor == {"__sst_truncated__": "MAX_DEPTH_REACHED"}
+
+
+    def test_serialize_max_depth_with_object_dict_is_mapping_safe(self, sst_instance):
+        class Node:
+            def __init__(self, child=None):
+                self.child = child
+
+        node = None
+        for _ in range(105):
+            node = Node(node)
+
+        serialized = sst_instance._serialize(node)
+
+        cursor = serialized
+        while isinstance(cursor, dict) and "child" in cursor:
+            cursor = cursor["child"]
+        assert cursor["__sst_truncated__"] == "MAX_DEPTH_REACHED"
 
 
 class TestSemanticHash:

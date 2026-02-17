@@ -30,6 +30,7 @@ MAX_STRING_LENGTH_FOR_REGEX = 10000
 
 class _CaptureNormalizer:
     MAX_DEPTH = 100
+    TRUNCATION_SENTINEL = {"__sst_truncated__": "MAX_DEPTH_REACHED"}
 
     def __init__(self, extra_pii_keys=None, strict_pii_matching: bool = True, extra_pii_patterns=None):
         self.pii_patterns = {
@@ -82,7 +83,7 @@ class _CaptureNormalizer:
                     return {"amount": self.amount, "currency": self.currency}
         """
         if depth > self.MAX_DEPTH:
-            return "[MAX_DEPTH_REACHED]"
+            return self.TRUNCATION_SENTINEL
         if isinstance(obj, (str, int, float, bool, type(None))):
             return obj
         if isinstance(obj, dict):
