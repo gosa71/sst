@@ -50,6 +50,8 @@ class SSTSynthesizer:
         return groups
 
     def _build_prompt(self, func_key, scenarios):
+        module_name = scenarios[0].get("module", func_key.rsplit(".", 1)[0])
+        func_name = func_key.rsplit(".", 1)[-1]
         source = scenarios[0].get("source", "# source not available")
         deps = scenarios[0].get("dependencies", [])
         exec_meta = scenarios[0].get("execution_metadata", {})
@@ -77,13 +79,15 @@ class SSTSynthesizer:
 - Python version: {python_version}
 - Detected dependencies: {deps}
 - Total captured scenarios: {len(scenarios)}
+- Import the function as: from {module_name} import {func_name}
 
 ## Captured Scenarios (PII already masked — do not assert on masked values)
 {scenario_text}
 
 ## Instructions
-1. Generate a Pytest file that tests `{func_key.split('.')[-1]}`.
-2. Write one test function per scenario, named `test_{func_key.split('.')[-1]}_scenario_N`.
+1. Generate a Pytest file that tests `{func_name}`.
+2. Write one test function per scenario, named `test_{func_name}_scenario_N`.
+   Captured input uses `args` (positional) and `kwargs` (keyword) — call the function as `{func_name}(*input["args"], **input["kwargs"])`.
 3. For success scenarios: assert on the structure and deterministic values of the output dict.
 4. For failure scenarios: use `pytest.raises(ExceptionType)` with the correct exception type.
 5. Use `unittest.mock.patch` to mock any non-deterministic calls (random, datetime, uuid).
