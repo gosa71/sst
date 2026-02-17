@@ -34,9 +34,9 @@ test = ["pytest>=7.0", "freezegun>=1.2"]
 sst = "sst.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/kumaer300-netizen/sst-python"
-Repository = "https://github.com/kumaer300-netizen/sst-python"
-Issues = "https://github.com/kumaer300-netizen/sst-python/issues"
+Homepage = "https://github.com/gosa71/sst"
+Repository = "https://github.com/gosa71/sst"
+Issues = "https://github.com/gosa71/sst/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sst"]
