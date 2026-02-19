@@ -9,6 +9,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ BASELINE_FORMAT_VERSION = 1
 SUPPORTED_BASELINE_VERSIONS = {1}
 STRICT_GOVERNANCE = True
 _CUSTOM_TRANSITION_VALIDATOR = None
+_BASELINE_FILENAME_RE = re.compile(r"^(.+)_([0-9a-f]{32})\.json$")
 
 
 @dataclass(frozen=True)
@@ -264,10 +266,9 @@ def list_scenarios(baseline_dir: str) -> List[Dict[str, Any]]:
     rows = []
     for path in sorted(glob.glob(os.path.join(baseline_dir, "*.json"))):
         record = load_baseline_record(path)
-        scenario = record["scenario"]
         rows.append(
             {
-                "scenario_id": f"{scenario.get('module')}.{scenario.get('function')}:{scenario.get('semantic_id')}",
+                "scenario_id": _filename_to_scenario_id(os.path.basename(path)),
                 "file": os.path.basename(path),
                 "metadata": record["metadata"],
             }
@@ -275,13 +276,19 @@ def list_scenarios(baseline_dir: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _filename_to_scenario_id(filename: str) -> str | None:
+    match = _BASELINE_FILENAME_RE.match(filename)
+    if match is None:
+        return None
+    mod_func, semantic_id = match.groups()
+    return f"{mod_func}:{semantic_id}"
+
+
 def find_scenario_file(baseline_dir: str, scenario_id: str) -> str:
-    for path in glob.glob(os.path.join(baseline_dir, "*.json")):
-        record = load_baseline_record(path)
-        scenario = record["scenario"]
-        candidate = f"{scenario.get('module')}.{scenario.get('function')}:{scenario.get('semantic_id')}"
-        if candidate == scenario_id:
-            return path
+    mod_func, semantic_id = scenario_id.rsplit(":", 1)
+    path = os.path.join(baseline_dir, f"{mod_func}_{semantic_id}.json")
+    if os.path.exists(path):
+        return path
     raise ScenarioNotFoundError(f"Scenario '{scenario_id}' not found")
 
 
