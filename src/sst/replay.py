@@ -13,10 +13,41 @@ import os
 from typing import Any, Dict, List
 
 from . import __version__
+from .config import get_config
 from .diff import apply_diff_policy, build_structured_diff, diff_policy_snapshot, format_human_diff, normalize_for_compare, summarize_changes
 from .errors import BaselineValidationError, ReplayDeterminismError, ReplayExecutionError
 from .governance import governance_policy_snapshot, load_baseline_record
 from .types import BaselineRecord, CaptureScenario, ReplayReport, ReplayScenarioResult, validate_capture_scenario
+
+
+def _load_capture_file(path: str) -> dict:
+    """Read and validate a raw capture payload file."""
+    from .governance import load_baseline_record as _load_baseline
+    import json
+
+    max_size = get_config().max_baseline_size
+    if os.path.getsize(path) > max_size:
+        raise ReplayExecutionError(
+            f"Capture file exceeds maximum size ({max_size} bytes): {path}"
+        )
+
+    with open(path, "r", encoding="utf-8") as file_obj:
+        try:
+            data = json.load(file_obj)
+        except json.JSONDecodeError as exc:
+            raise ReplayExecutionError(
+                f"Invalid JSON in capture file '{path}': {exc}"
+            ) from exc
+
+    if not isinstance(data, dict):
+        raise ReplayExecutionError(
+            f"Capture file '{path}' must contain a JSON object at top level"
+        )
+
+    if "scenario" not in data:
+        data = {"scenario": data, "metadata": {}, "approval_history": []}
+
+    return data
 
 
 class ReplayEngine:
@@ -52,7 +83,7 @@ class ReplayEngine:
     def _load_captures(self) -> Dict[str, BaselineRecord]:
         records: Dict[str, BaselineRecord] = {}
         for path in sorted(glob.glob(os.path.join(self.capture_dir, "*.json"))):
-            record = load_baseline_record(path)
+            record = _load_capture_file(path)
             scenario = record["scenario"]
             key = self._scenario_key(scenario)
             if key in records:

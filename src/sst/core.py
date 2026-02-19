@@ -285,6 +285,10 @@ class SSTCore:
         )
 
     def _write_capture(self, func, masked_inputs, output_snapshot):
+        if self.verify_mode:
+            # In verify mode the CLI pipeline manages capture storage.
+            # Writing here would accumulate stale files in shadow_dir.
+            return
         try:
             os.makedirs(self.storage_dir, exist_ok=True)
             capture_payload = self._build_payload(func, masked_inputs, output_snapshot)
@@ -298,6 +302,26 @@ class SSTCore:
             logger.warning("SST: Failed to write capture data: %s", write_err)
 
     def capture(self, func=None, *, sampling_rate: float | None = None):
+        """Decorator that captures function inputs and outputs for SST.
+
+        In recording mode (SST_ENABLED=true): serializes inputs/outputs to
+        shadow_dir for baseline creation. The decorated function behaves
+        normally — no exceptions are added.
+
+        In verify mode (SST_VERIFY=true): captures are compared against the
+        baseline in the finally block. If a regression is detected,
+        RegressionDetectedError is raised INSTEAD of returning the function
+        result. This is intentional — verify mode is designed for CI and
+        test environments, not production traffic. Do not enable SST_VERIFY=true
+        in production unless you explicitly handle RegressionDetectedError at
+        call sites.
+
+        Args:
+            func: The function to decorate. Pass None to use as a
+                  parameterized decorator: @sst.capture(sampling_rate=0.5).
+            sampling_rate: Override the configured sampling rate for this
+                  specific function (0.0 to 1.0). None uses the global config.
+        """
         if func is None:
             return lambda wrapped_func: self.capture(wrapped_func, sampling_rate=sampling_rate)
 
