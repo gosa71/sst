@@ -66,6 +66,7 @@ class RegressionDetectedError(RuntimeError, SSTError):
 
     def __post_init__(self) -> None:
         SSTError.__init__(self, self.reason_code, "DIFF", self.message, True)
+        RuntimeError.__init__(self, self.message)
 
     def __str__(self) -> str:
         return self.message
