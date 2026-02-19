@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,8 @@ from .types import ReplayReport
 from .synthesizer import SSTSynthesizer
 
 logger = logging.getLogger(__name__)
+
+_CAPTURE_FILENAME_RE = re.compile(r"^(?P<mod_func>.+)_(?P<sid>[0-9a-f]{32})_\d{6}_\d+\.json$")
 
 
 
@@ -289,12 +292,14 @@ def _run_verify_pipeline(app_script: str) -> ReplayReport:
         config = refresh_config()
         shadow = Path(config.shadow_dir)
         shadow.mkdir(parents=True, exist_ok=True)
-        for item in Path(capture_dir).glob("*"):
-            target = shadow / item.name
-            if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, target)
+        for item in Path(capture_dir).glob("*.json"):
+            match = _CAPTURE_FILENAME_RE.match(item.name)
+            if match:
+                mod_func = match.group("mod_func")
+                semantic_id = match.group("sid")
+                for stale in shadow.glob(f"{mod_func}_{semantic_id}_*.json"):
+                    stale.unlink()
+            shutil.copy2(item, shadow / item.name)
         engine = ReplayEngine(baseline_dir=config.baseline_dir, capture_dir=capture_dir)
         return engine.replay()
 

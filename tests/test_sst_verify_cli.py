@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from click.testing import CliRunner
@@ -258,3 +259,72 @@ def test_verify_capture_failure_includes_stdout_and_stderr(tmp_path, monkeypatch
     assert result.exit_code == 2
     assert "Stdout: hello out" in result.output
     assert "Stderr: boom err" in result.output
+
+
+def test_verify_pipeline_upserts_shadow_capture_by_scenario(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('''[tool.sst]
+shadow_dir = ".sst_shadow"
+baseline_dir = ".sst_baseline"
+''', encoding="utf-8")
+    sid = "a" * 32
+    shadow_dir = tmp_path / ".sst_shadow"
+    shadow_dir.mkdir()
+    stale = shadow_dir / f"pkg.mod.fn_{sid}_010101_1.json"
+    stale.write_text("{}", encoding="utf-8")
+
+    capture_name = f"pkg.mod.fn_{sid}_020202_2.json"
+
+    def fake_collect(_app_script, capture_dir):
+        (Path(capture_dir) / capture_name).write_text("{}", encoding="utf-8")
+
+    class FakeEngine:
+        def __init__(self, baseline_dir, capture_dir):
+            self.baseline_dir = baseline_dir
+            self.capture_dir = capture_dir
+
+        def replay(self):
+            return {"baseline_count": 0, "capture_count": 0, "missing": [], "regressions": [], "scenarios": []}
+
+    monkeypatch.setattr(sst_cli, "_collect_replay_capture", fake_collect)
+    monkeypatch.setattr(sst_cli, "ReplayEngine", FakeEngine)
+
+    report = sst_cli._run_verify_pipeline("app.py")
+
+    assert report["baseline_count"] == 0
+    assert not stale.exists()
+    assert (shadow_dir / capture_name).exists()
+
+
+def test_verify_pipeline_fallback_copy_when_capture_name_unexpected(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text('''[tool.sst]
+shadow_dir = ".sst_shadow"
+baseline_dir = ".sst_baseline"
+''', encoding="utf-8")
+    sid = "b" * 32
+    shadow_dir = tmp_path / ".sst_shadow"
+    shadow_dir.mkdir()
+    stale = shadow_dir / f"pkg.mod.fn_{sid}_010101_1.json"
+    stale.write_text("{}", encoding="utf-8")
+
+    capture_name = "unexpected_name.json"
+
+    def fake_collect(_app_script, capture_dir):
+        (Path(capture_dir) / capture_name).write_text("{}", encoding="utf-8")
+
+    class FakeEngine:
+        def __init__(self, baseline_dir, capture_dir):
+            self.baseline_dir = baseline_dir
+            self.capture_dir = capture_dir
+
+        def replay(self):
+            return {"baseline_count": 0, "capture_count": 0, "missing": [], "regressions": [], "scenarios": []}
+
+    monkeypatch.setattr(sst_cli, "_collect_replay_capture", fake_collect)
+    monkeypatch.setattr(sst_cli, "ReplayEngine", FakeEngine)
+
+    sst_cli._run_verify_pipeline("app.py")
+
+    assert stale.exists()
+    assert (shadow_dir / capture_name).exists()
