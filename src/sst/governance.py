@@ -113,13 +113,14 @@ def _migrate_record_for_version(data: Dict[str, Any], version: int) -> Dict[str,
 
 
 def _parse_scenario_identity_from_path(path: str) -> Dict[str, str]:
-    stem = os.path.splitext(os.path.basename(path))[0]
-    if "_" not in stem or "." not in stem:
+    filename = os.path.basename(path)
+    match = _BASELINE_FILENAME_RE.match(filename)
+    if match is None:
         return {}
-    func_path, semantic_id = stem.rsplit("_", 1)
-    module, function = func_path.rsplit(".", 1)
-    if not module or not function or not semantic_id:
+    mod_func, semantic_id = match.groups()
+    if "." not in mod_func:
         return {}
+    module, function = mod_func.rsplit(".", 1)
     return {"module": module, "function": function, "semantic_id": semantic_id}
 
 

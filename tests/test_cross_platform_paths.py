@@ -5,38 +5,38 @@ from sst.governance import _parse_scenario_identity_from_path
 PARSE_CASES = [
     # (filename_stem, expected_module, expected_function, expected_semantic_id)
     (
-        "myapp.billing.calculate_abc123def456789012345678901234",
+        "myapp.billing.calculate_abc123def4567890123456789012abcd",
         "myapp.billing",
         "calculate",
-        "abc123def456789012345678901234",
+        "abc123def4567890123456789012abcd",
     ),
     (
-        "my_app.billing.calculate_abc123def456789012345678901234",
+        "my_app.billing.calculate_abc123def4567890123456789012abcd",
         "my_app.billing",
         "calculate",
-        "abc123def456789012345678901234",
+        "abc123def4567890123456789012abcd",
     ),
     (
-        "app.mod.fn_with_underscore_abc123def456789012345678901234",
+        "app.mod.fn_with_underscore_abc123def4567890123456789012abcd",
         "app.mod",
         "fn_with_underscore",
-        "abc123def456789012345678901234",
+        "abc123def4567890123456789012abcd",
     ),
 ]
 
 
 def test_parse_normal_baseline_filename():
     result = _parse_scenario_identity_from_path(
-        "myapp.billing.calculate_abc123def456789012345678901234.json"
+        "myapp.billing.calculate_abc123def4567890123456789012abcd.json"
     )
     assert result["module"] == "myapp.billing"
     assert result["function"] == "calculate"
-    assert result["semantic_id"] == "abc123def456789012345678901234"
+    assert result["semantic_id"] == "abc123def4567890123456789012abcd"
 
 
 def test_parse_module_with_underscore():
     result = _parse_scenario_identity_from_path(
-        "my_app.billing.calculate_abc123def456789012345678901234.json"
+        "my_app.billing.calculate_abc123def4567890123456789012abcd.json"
     )
     assert result["module"] == "my_app.billing"
     assert result["function"] == "calculate"
@@ -44,10 +44,10 @@ def test_parse_module_with_underscore():
 
 def test_parse_function_with_underscore():
     result = _parse_scenario_identity_from_path(
-        "app.mod.fn_with_underscore_abc123def456789012345678901234.json"
+        "app.mod.fn_with_underscore_abc123def4567890123456789012abcd.json"
     )
     assert result["function"] == "fn_with_underscore"
-    assert result["semantic_id"] == "abc123def456789012345678901234"
+    assert result["semantic_id"] == "abc123def4567890123456789012abcd"
 
 
 def test_parse_returns_empty_for_no_dot():
