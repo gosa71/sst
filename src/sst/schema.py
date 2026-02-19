@@ -67,12 +67,6 @@ def validate_scenario_schema(scenario: dict[str, Any]) -> ScenarioSchema:
             f"Invalid baseline scenario field 'input': expected dict, got {actual}"
         )
 
-    if "inputs" in scenario and not isinstance(scenario["inputs"], (dict, list)):
-        actual = type(scenario["inputs"]).__name__
-        raise ValidationError(
-            f"Invalid baseline scenario field 'inputs': expected dict or list, got {actual}"
-        )
-
     return ScenarioSchema(
         module=scenario["module"],
         function=scenario["function"],

@@ -137,7 +137,10 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
             logger.warning("SST: Skipping invalid pii_patterns entry: %s", entry)
     governance_policy = os.getenv(f"{_ENV_PREFIX}GOVERNANCE_POLICY", raw.get("governance_policy", "default"))
     strict_governance = _to_bool(os.getenv(f"{_ENV_PREFIX}STRICT_GOVERNANCE", raw.get("strict_governance", True)), True)
-    max_baseline_size = _to_int(raw.get("max_baseline_size", 50 * 1024 * 1024), 50 * 1024 * 1024)
+    max_baseline_size = _to_int(
+        os.getenv("SST_MAX_BASELINE_SIZE", raw.get("max_baseline_size", 50 * 1024 * 1024)),
+        50 * 1024 * 1024,
+    )
     clean_shadow_on_record = _to_bool(
         os.getenv(f"{_ENV_PREFIX}CLEAN_SHADOW_ON_RECORD", raw.get("clean_shadow_on_record", False)), False
     )
