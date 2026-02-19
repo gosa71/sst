@@ -147,8 +147,11 @@ def filter_dynamic_fields(data: Any) -> Any:
     return apply_diff_policy(data, DEFAULT_DIFF_POLICY)
 
 
-def normalize_for_compare(data: Any, path: str = "$") -> Any:
+def normalize_for_compare(data: Any, path: str = "$", depth: int = 0) -> Any:
     """Normalize payloads into deterministic structures for stable comparison."""
+    if depth > MAX_DEPTH:
+        return "[MAX_DEPTH_REACHED]"
+
     cfg_policy = get_config().diff_policy
     float_tolerance = float(cfg_policy.get("float_tolerance", 1e-6))
     decimals = 6 if float_tolerance <= 0 else max(0, min(12, abs(int(round(-math.log10(float_tolerance))))))
@@ -170,9 +173,11 @@ def normalize_for_compare(data: Any, path: str = "$") -> Any:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
     if isinstance(data, dict):
-        return {key: normalize_for_compare(data[key], f"{path}.{key}") for key in sorted(data.keys())}
+        return {key: normalize_for_compare(data[key], f"{path}.{key}", depth + 1) for key in sorted(data.keys())}
     if isinstance(data, list):
-        normalized_list = [normalize_for_compare(item, f"{path}[{index}]") for index, item in enumerate(data)]
+        normalized_list = [
+            normalize_for_compare(item, f"{path}[{index}]", depth + 1) for index, item in enumerate(data)
+        ]
         if _should_sort_list(path):
             return sorted(normalized_list, key=_canonical_sort_key)
         return normalized_list
