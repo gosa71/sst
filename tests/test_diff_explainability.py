@@ -165,7 +165,11 @@ def test_regression_error_message_contains_scenario_id_and_approve_hint(tmp_path
             with pytest.raises(RegressionDetectedError) as exc_info:
                 wrapped(77)
 
-    err = str(exc_info.value)
+    exc = exc_info.value
+    err = str(exc)
     assert "REGRESSION DETECTED" in err
     assert f"{__name__}.compute" in err
     assert "sst approve" in err
+    assert exc.args == (err,)
+    assert exc.scenario_id == f"{__name__}.compute:{sem}"
+    assert exc.error_code == "SEMANTIC_REGRESSION"
