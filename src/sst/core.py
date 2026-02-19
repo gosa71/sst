@@ -30,8 +30,16 @@ _DEP_CACHE_SIZE = 256
 
 
 @functools.lru_cache(maxsize=_DEP_CACHE_SIZE)
+def _cached_get_source(func) -> str:
+    try:
+        return inspect.getsource(func)
+    except OSError:
+        return ""
+
+
+@functools.lru_cache(maxsize=_DEP_CACHE_SIZE)
 def _cached_analyze_dependencies(func) -> tuple[str, ...]:
-    source = textwrap.dedent(inspect.getsource(func))
+    source = textwrap.dedent(_cached_get_source(func))
     tree = ast.parse(source)
     calls = []
 
@@ -242,8 +250,6 @@ class SSTCore:
     def _analyze_dependencies(self, func) -> List[str]:
         try:
             return list(_cached_analyze_dependencies(func))
-        except OSError:
-            return []
         except Exception:
             return []
 
@@ -275,7 +281,7 @@ class SSTCore:
             dependencies=self._analyze_dependencies(func),
             execution_metadata=self._capture_metadata(),
             dependency_capture=self._capture_dependency_hooks(),
-            source=inspect.getsource(func),
+            source=_cached_get_source(func),
         )
 
     def _write_capture(self, func, masked_inputs, output_snapshot):
