@@ -248,7 +248,14 @@ def evaluate_governance_decision(action: str, current_status: str, policy: Gover
 def approve_scenario(path: str, capture_data: Dict[str, Any]) -> BaselineRecord:
     capture_data = {"input": {}, "output": {}, **capture_data}
     capture_data.setdefault("engine_version", __version__)
-    record = {"scenario": capture_data, "metadata": _default_metadata(), "approval_history": []} if not os.path.exists(path) else load_baseline_record(path)
+    if not os.path.exists(path):
+        record = {
+            "scenario": capture_data,
+            "metadata": _default_metadata(),
+            "approval_history": [],
+        }
+    else:
+        record = load_baseline_record(path)
     decision = evaluate_governance_decision("approve", record["metadata"].get("scenario_status", "pending"))
     if not decision.allowed:
         raise BaselineFormatError(f"Cannot approve scenario: {decision.reason_code}: {decision.explanation}")
