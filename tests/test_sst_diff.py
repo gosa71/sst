@@ -123,3 +123,16 @@ def test_normalize_for_compare_float_tolerance_zero_keeps_exact_float(tmp_path, 
     normalized = normalize_for_compare({"value": value})
 
     assert normalized["value"] == value
+
+
+def test_normalize_for_compare_caps_recursion_depth():
+    payload = 0
+    for _ in range(102):
+        payload = {"x": payload}
+
+    normalized = normalize_for_compare(payload)
+
+    cursor = normalized
+    for _ in range(100):
+        cursor = cursor["x"]
+    assert cursor["x"] == "[MAX_DEPTH_REACHED]"
