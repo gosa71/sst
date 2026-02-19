@@ -26,7 +26,12 @@ class SSTGen:
             except json.JSONDecodeError as e:
                 logger.warning("Skipping corrupted JSON file %s: %s", f, e)
                 continue
-            if func_filter and data["function"] != func_filter:
+            required = {"function", "module", "semantic_id", "input", "output"}
+            missing = required - data.keys()
+            if missing:
+                logger.warning("Skipping %s: missing fields %s", f, sorted(missing))
+                continue
+            if func_filter and data.get("function") != func_filter:
                 continue
             captures.append(data)
         return captures
@@ -34,7 +39,12 @@ class SSTGen:
     def _group_by_function(self, captures):
         groups = {}
         for c in captures:
-            key = f"{c['module']}.{c['function']}"
+            module = c.get("module", "")
+            function = c.get("function", "")
+            if not module or not function:
+                logger.debug("Skipping malformed capture in grouping: %s", c)
+                continue
+            key = f"{module}.{function}"
             if key not in groups:
                 groups[key] = []
             groups[key].append(c)
@@ -101,7 +111,7 @@ class SSTGen:
     def run(self, func_filter=None):
         captures = self._load_captures(func_filter)
         if not captures:
-            print("No captures found.")
+            logger.info("No captures found.")
             return
 
         groups = self._group_by_function(captures)
@@ -114,7 +124,7 @@ class SSTGen:
             Path(init_path).touch(exist_ok=True)
 
         for func_key, scenarios in groups.items():
-            print(f"Generating stub tests for {func_key} ({len(scenarios)} scenarios)...")
+            logger.info("Generating stub tests for %s (%d scenarios)...", func_key, len(scenarios))
             test_code = self._generate_test_code(func_key, scenarios)
 
             safe_name = func_key.replace(".", "_")
@@ -122,7 +132,7 @@ class SSTGen:
 
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(test_code)
-            print(f"  Written to {output_path}")
+            logger.info("  Written to %s", output_path)
 
 
 if __name__ == "__main__":

@@ -96,10 +96,11 @@ class TestSSTGen:
         gen.run()
         assert (output_dir / "__init__.py").exists()
 
-    def test_run_with_no_captures_prints_message(self, tmp_path, capsys):
+    def test_run_with_no_captures_logs_message(self, tmp_path, caplog):
         gen = SSTGen(shadow_dir=str(tmp_path))
-        gen.run()
-        assert "No captures found" in capsys.readouterr().out
+        with caplog.at_level("INFO"):
+            gen.run()
+        assert "No captures found" in caplog.text
 
 
 class TestSSTSynthesizer:
