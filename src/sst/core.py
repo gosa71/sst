@@ -26,6 +26,29 @@ logger = logging.getLogger(__name__)
 __all__ = ["SSTCore", "sst"]
 
 MAX_STRING_LENGTH_FOR_REGEX = 10000
+_DEP_CACHE_SIZE = 256
+
+
+@functools.lru_cache(maxsize=_DEP_CACHE_SIZE)
+def _cached_analyze_dependencies(func) -> tuple[str, ...]:
+    source = textwrap.dedent(inspect.getsource(func))
+    tree = ast.parse(source)
+    calls = []
+
+    def get_full_name(node):
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            base = get_full_name(node.value)
+            return f"{base}.{node.attr}" if base else node.attr
+        return None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            full_name = get_full_name(node.func)
+            if full_name:
+                calls.append(full_name)
+    return tuple(set(calls))
 
 
 class _CaptureNormalizer:
@@ -218,24 +241,9 @@ class SSTCore:
 
     def _analyze_dependencies(self, func) -> List[str]:
         try:
-            source = textwrap.dedent(inspect.getsource(func))
-            tree = ast.parse(source)
-            calls = []
-
-            def get_full_name(node):
-                if isinstance(node, ast.Name):
-                    return node.id
-                if isinstance(node, ast.Attribute):
-                    base = get_full_name(node.value)
-                    return f"{base}.{node.attr}" if base else node.attr
-                return None
-
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Call):
-                    full_name = get_full_name(node.func)
-                    if full_name:
-                        calls.append(full_name)
-            return list(set(calls))
+            return list(_cached_analyze_dependencies(func))
+        except OSError:
+            return []
         except Exception:
             return []
 
