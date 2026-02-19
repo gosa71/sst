@@ -35,7 +35,14 @@ class SSTSynthesizer:
             except json.JSONDecodeError as e:
                 logger.warning("Skipping corrupted JSON file %s: %s", f, e)
                 continue
-            if func_filter and data["function"] != func_filter:
+
+            required = {"function", "module", "semantic_id", "input", "output"}
+            missing = required - data.keys()
+            if missing:
+                logger.warning("Skipping %s: missing fields %s", f, sorted(missing))
+                continue
+
+            if func_filter and data.get("function") != func_filter:
                 continue
             captures.append(data)
         return captures
@@ -43,7 +50,13 @@ class SSTSynthesizer:
     def _group_by_function(self, captures):
         groups = {}
         for c in captures:
-            key = f"{c['module']}.{c['function']}"
+            module = c.get("module", "")
+            function = c.get("function", "")
+            if not module or not function:
+                logger.debug("Skipping malformed capture in grouping: %s", c)
+                continue
+
+            key = f"{module}.{function}"
             if key not in groups:
                 groups[key] = []
             groups[key].append(c)
