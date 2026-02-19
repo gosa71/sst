@@ -203,7 +203,7 @@ The output must be syntactically valid Python that passes `python -m py_compile`
     def run(self, func_filter=None, output_dir="tests/", open_editor=False):
         captures = self._load_captures(func_filter)
         if not captures:
-            print("No captures found.")
+            logger.info("No captures found.")
             return
 
         groups = self._group_by_function(captures)
@@ -216,18 +216,18 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             Path(init_path).touch(exist_ok=True)
 
         for func_key, scenarios in groups.items():
-            print(f"Generating tests for {func_key} ({len(scenarios)} scenarios)...")
+            logger.info("Generating tests for %s (%d scenarios)...", func_key, len(scenarios))
             prompt = self._build_prompt(func_key, scenarios)
             
             try:
                 test_code = self._call_llm(prompt)
             except Exception as e:
-                print(f"  LLM call failed: {e}")
-                print("  Generating fallback template...")
+                logger.warning("LLM call failed for %s: %s", func_key, e)
+                logger.info("Generating fallback template for %s", func_key)
                 test_code = self._generate_fallback(func_key, scenarios)
 
             if not self._validate_syntax(test_code, func_key):
-                print(f"  Warning: generated code has syntax errors — falling back to template")
+                logger.warning("Generated code for %s has syntax errors; falling back to template", func_key)
                 test_code = self._generate_fallback(func_key, scenarios)
 
             safe_name = func_key.replace(".", "_")
@@ -235,7 +235,7 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(test_code)
-            print(f"  Written to {output_path}")
+            logger.info("Written to %s", output_path)
 
             if open_editor:
                 editor = os.getenv("EDITOR", "nano")
@@ -247,7 +247,10 @@ The output must be syntactically valid Python that passes `python -m py_compile`
         
         code = f'''import pytest
 from unittest.mock import patch
-from freezegun import freeze_time
+try:
+    from freezegun import freeze_time
+except ImportError:
+    freeze_time = None  # freezegun not installed; skip time-freezing tests
 from {module_name} import {func_name}
 
 '''
