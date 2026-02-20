@@ -119,8 +119,23 @@ class _CaptureNormalizer:
             return obj
         if isinstance(obj, dict):
             return {str(k): self.serialize(v, depth + 1) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple, set)):
+        if isinstance(obj, (list, tuple)):
             return [self.serialize(i, depth + 1) for i in obj]
+        if isinstance(obj, (set, frozenset)):
+            serialized_items = [self.serialize(i, depth + 1) for i in obj]
+            try:
+                return sorted(
+                    serialized_items,
+                    key=lambda x: json.dumps(
+                        x,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+            except Exception:
+                return sorted(serialized_items, key=repr)
         if hasattr(obj, "__sst_serialize__"):
             return self.serialize(obj.__sst_serialize__(), depth + 1)
         if hasattr(obj, "__dict__"):
