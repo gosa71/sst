@@ -148,6 +148,30 @@ class TestSSTSynthesizer:
         assert "Scenario 1" in prompt
         assert "math" in prompt
 
+
+    def test_build_prompt_truncates_large_source_and_scenarios(self, caplog):
+        s = SSTSynthesizer()
+        huge_source = "def foo():\n    x = " + " + ".join(str(i) for i in range(5000))
+        scenarios = [{
+            "function": "foo",
+            "module": "mymod",
+            "input": {"args": [], "kwargs": {"data": list(range(1000))}},
+            "output": {"status": "success", "raw_result": list(range(1000))},
+            "semantic_id": "a" * 32,
+            "source": huge_source,
+            "dependencies": [],
+            "execution_metadata": {"python_version": "3.12.0"},
+        }] * 30
+
+        with caplog.at_level("WARNING"):
+            prompt = s._build_prompt("mymod.foo", scenarios)
+
+        assert len(prompt) < 60_000
+        assert "truncated" in prompt
+        assert "Total captured scenarios: 30 (showing 20 in prompt)" in prompt
+        assert "Scenario 21" not in prompt
+        assert "Prompt for mymod.foo: truncating scenarios from 30 to 20" in caplog.text
+
     def test_run_uses_llm_and_writes_file(self, tmp_path):
         output_dir = tmp_path / "tests"
         s = SSTSynthesizer()
