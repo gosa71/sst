@@ -139,7 +139,10 @@ class _CaptureNormalizer:
         if hasattr(obj, "__sst_serialize__"):
             return self.serialize(obj.__sst_serialize__(), depth + 1)
         if hasattr(obj, "__dict__"):
-            return {"__class__": obj.__class__.__name__, **self.serialize(obj.__dict__, depth + 1)}
+            serialized_attrs = self.serialize(obj.__dict__, depth + 1)
+            if isinstance(serialized_attrs, dict):
+                serialized_attrs.pop("__class__", None)
+            return {"__class__": obj.__class__.__name__, **serialized_attrs}
         return {"__class__": obj.__class__.__name__, "__repr__": repr(obj)}
 
     def mask_pii(self, data: Any, depth: int = 0) -> Any:
