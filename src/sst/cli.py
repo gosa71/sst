@@ -308,8 +308,7 @@ def _run_verify_pipeline(app_script: str) -> ReplayReport:
 @click.argument("app_script")
 @click.option("--verbose", is_flag=True, help="Show field-level diff details")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable diff report")
-@click.option("--replay", is_flag=True, help="Deterministic replay using captured inputs")
-def verify(app_script, verbose, json_output, replay):
+def verify(app_script, verbose, json_output):
     """Verify current behavior against baseline (Regression Gate)."""
     if not os.path.exists(app_script):
         click.echo(f"Error: {app_script} not found.")
