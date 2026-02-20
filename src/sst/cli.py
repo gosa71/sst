@@ -31,6 +31,7 @@ from .synthesizer import SSTSynthesizer
 logger = logging.getLogger(__name__)
 
 _CAPTURE_FILENAME_RE = re.compile(r"^(?P<mod_func>.+)_(?P<sid>[0-9a-f]{32})_\d{6}_\d+\.json$")
+_MAX_OUTPUT_BYTES = 4096
 
 
 
@@ -242,6 +243,15 @@ def _print_verify_report(report: ReplayReport, verbose: bool = False, as_json: b
         click.echo()
 
 
+def _truncate_output(text: str, limit: int = _MAX_OUTPUT_BYTES) -> str:
+    """Truncate subprocess output to avoid bloating CI error messages."""
+    if len(text) <= limit:
+        return text
+    kept = text[:limit]
+    dropped = len(text) - limit
+    return f"{kept}\n... [{dropped} chars truncated]"
+
+
 def _collect_replay_capture(app_script: str, capture_dir: str) -> None:
     """Execute the target app in capture mode and persist replay artifacts."""
     env = os.environ.copy()
@@ -274,9 +284,9 @@ def _collect_replay_capture(app_script: str, capture_dir: str) -> None:
             stderr = raw_stderr.decode("utf-8", errors="replace").strip()
         details = []
         if stdout:
-            details.append(f"Stdout: {stdout}")
+            details.append(f"Stdout: {_truncate_output(stdout)}")
         if stderr:
-            details.append(f"Stderr: {stderr}")
+            details.append(f"Stderr: {_truncate_output(stderr)}")
         detail = "\n" + "\n".join(details) if details else ""
         raise SSTError(
             "VERIFY_REPLAY_CAPTURE_FAILED",

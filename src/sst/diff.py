@@ -170,7 +170,10 @@ def normalize_for_compare(data: Any, path: str = "$", depth: int = 0) -> Any:
         return False
 
     def _canonical_sort_key(value: Any) -> str:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        try:
+            return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+        except Exception:
+            return repr(value)
 
     if isinstance(data, dict):
         return {key: normalize_for_compare(data[key], f"{path}.{key}", depth + 1) for key in sorted(data.keys())}
