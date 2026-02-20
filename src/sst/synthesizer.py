@@ -9,6 +9,10 @@ from .config import get_config
 
 logger = logging.getLogger(__name__)
 
+_MAX_SOURCE_CHARS = 8_000
+_MAX_SCENARIOS_IN_PROMPT = 20
+_MAX_SCENARIO_VALUE_CHARS = 500
+
 _PROVIDER_DEFAULT_MODELS = {
     "openai": "gpt-4o",
     "anthropic": "claude-sonnet-4-20250514",
@@ -63,23 +67,40 @@ class SSTSynthesizer:
         return groups
 
     def _build_prompt(self, func_key, scenarios):
+        def _truncate_json(obj, limit=_MAX_SCENARIO_VALUE_CHARS) -> str:
+            text = json.dumps(obj, indent=2)
+            if len(text) > limit:
+                return text[:limit] + f"\n# ... [{len(text) - limit} chars truncated]"
+            return text
+
         module_name = scenarios[0].get("module", func_key.rsplit(".", 1)[0])
         func_name = func_key.rsplit(".", 1)[-1]
         source = scenarios[0].get("source", "# source not available")
+        if len(source) > _MAX_SOURCE_CHARS:
+            source = source[:_MAX_SOURCE_CHARS] + f"\n# ... [{len(source) - _MAX_SOURCE_CHARS} chars truncated]"
+
         deps = scenarios[0].get("dependencies", [])
         exec_meta = scenarios[0].get("execution_metadata", {})
         python_version = exec_meta.get("python_version", "unknown")
+        total_scenarios = len(scenarios)
+        if total_scenarios > _MAX_SCENARIOS_IN_PROMPT:
+            logger.warning(
+                "Prompt for %s: truncating scenarios from %d to %d "
+                "(increase _MAX_SCENARIOS_IN_PROMPT to include more).",
+                func_key, total_scenarios, _MAX_SCENARIOS_IN_PROMPT,
+            )
+            scenarios = scenarios[:_MAX_SCENARIOS_IN_PROMPT]
 
         scenario_text = ""
         for i, s in enumerate(scenarios):
             status = s["output"].get("status", "unknown")
             scenario_text += f"\n--- Scenario {i+1} (status: {status}) ---\n"
-            scenario_text += f"Input: {json.dumps(s['input'], indent=2)}\n"
+            scenario_text += f"Input: {_truncate_json(s['input'])}\n"
             if status == "success":
-                scenario_text += f"Expected output: {json.dumps(s['output'].get('raw_result'), indent=2)}\n"
+                scenario_text += f"Expected output: {_truncate_json(s['output'].get('raw_result'))}\n"
             else:
                 scenario_text += f"Expected exception: {s['output'].get('error_type', 'Exception')}\n"
-                scenario_text += f"Exception message: {s['output'].get('error', '')}\n"
+                scenario_text += f"Exception message: {s['output'].get('error', '')[:_MAX_SCENARIO_VALUE_CHARS]}\n"
 
         prompt = f"""You are a senior Python test engineer. Generate a complete, runnable Pytest test file.
 
@@ -91,7 +112,7 @@ class SSTSynthesizer:
 ## Runtime context
 - Python version: {python_version}
 - Detected dependencies: {deps}
-- Total captured scenarios: {len(scenarios)}
+- Total captured scenarios: {total_scenarios} (showing {len(scenarios)} in prompt)
 - Import the function as: from {module_name} import {func_name}
 
 ## Captured Scenarios (PII already masked — do not assert on masked values)
