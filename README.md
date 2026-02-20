@@ -170,7 +170,7 @@ pii_patterns = [
 ]
 strict_pii_matching = true  # true = exact key match; false = substring match
 governance_policy = "default"
-verify_timeout = 600  # seconds
+verify_timeout = 300  # seconds (default; increase for slow apps)
 
 [tool.sst.diff_policy]
 ignored_fields = ["timestamp", "request_id"]
@@ -181,7 +181,7 @@ mask_timestamps = true
 ignored_paths = ["$.meta.request_id", "$.audit.trace_id"]
 
 # Stabilize comparisons when list order is non-deterministic
-sort_lists = true
+list_sort_paths = ["$.items", "$.tags", "$.permissions"]
 ```
 
 Useful environment overrides include `SST_BASELINE_DIR`, `SST_SHADOW_DIR`, `SST_SAMPLING_RATE`, `SST_GOVERNANCE_POLICY`, and `SST_VERIFY_TIMEOUT`.
@@ -189,7 +189,9 @@ Useful environment overrides include `SST_BASELINE_DIR`, `SST_SHADOW_DIR`, `SST_
 Policy notes:
 
 - Prefer `ignored_paths` when volatile fields are nested and you need precise suppression without dropping whole objects.
-- Use `sort_lists = true` when APIs return semantically identical arrays in varying order.
+- Use `list_sort_paths` to specify JSONPath expressions for arrays whose
+  element order is non-deterministic (e.g., `["$.items", "$.tags"]`).
+  Only listed paths are sorted; all other lists are compared positionally.
 - PII masking is recursive by default and traverses nested dict/list payloads automatically, so deep sensitive values are still protected.
 - Use `pii_patterns` to add domain-specific regex patterns (e.g. national ID formats, internal codes) beyond the built-in set. Invalid patterns are skipped with a warning and never raise.
 - Set `strict_pii_matching = false` to catch compound key names like `old_password` or `user_token` in addition to exact matches.

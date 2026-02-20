@@ -1,3 +1,8 @@
+"""
+DEPRECATED: ShadowCapture produces captures incompatible with the SST
+semantic pipeline. Use SSTCore (@sst.capture) from sst.core instead.
+"""
+
 import functools
 import json
 import os
@@ -11,9 +16,13 @@ logger = logging.getLogger(__name__)
 class ShadowCapture:
     def __init__(self, storage_dir=".shadow_data"):
         warnings.warn(
-            "ShadowCapture is deprecated. Use SSTCore from sst.core instead.",
+            "ShadowCapture is deprecated and produces captures that are "
+            "incompatible with the SST pipeline (missing semantic_id, "
+            "non-JSON-serializable inputs via repr()). "
+            "Migrate to @sst.capture from sst.core — it is a drop-in decorator "
+            "replacement. See https://github.com/your-org/sst for migration guide.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         self.storage_dir = storage_dir
 
