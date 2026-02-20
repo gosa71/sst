@@ -215,9 +215,45 @@ class ReplayEngine:
                 continue
 
             current_scenario = captures[key]["scenario"]
-            baseline_output = self.normalize_output(baseline_scenario.get("output", {}).get("raw_result"))
-            current_output = self.normalize_output(current_scenario.get("output", {}).get("raw_result"))
-            changes = build_structured_diff(baseline_output, current_output)
+            baseline_out = baseline_scenario.get("output", {})
+            current_out = current_scenario.get("output", {})
+            baseline_status = baseline_out.get("status", "unknown")
+            current_status = current_out.get("status", "unknown")
+
+            if baseline_status == "success" and current_status == "success":
+                baseline_value = self.normalize_output(baseline_out.get("raw_result"))
+                current_value = self.normalize_output(current_out.get("raw_result"))
+                changes = build_structured_diff(baseline_value, current_value)
+            elif baseline_status == "failure" and current_status == "failure":
+                baseline_etype = baseline_out.get("error_type", "")
+                current_etype = current_out.get("error_type", "")
+                if baseline_etype != current_etype:
+                    changes = [
+                        {
+                            "path": "$.output.error_type",
+                            "change_type": "value_changed",
+                            "severity": "high",
+                            "baseline": baseline_etype,
+                            "current": current_etype,
+                        }
+                    ]
+                else:
+                    changes = []
+            elif baseline_status in ("success", "failure") and current_status in ("success", "failure"):
+                changes = [
+                    {
+                        "path": "$.output.status",
+                        "change_type": "status_changed",
+                        "severity": "high",
+                        "baseline": baseline_status,
+                        "current": current_status,
+                    }
+                ]
+            else:
+                baseline_value = self.normalize_output(baseline_out.get("raw_result"))
+                current_value = self.normalize_output(current_out.get("raw_result"))
+                changes = build_structured_diff(baseline_value, current_value)
+
             if changes:
                 row: ReplayScenarioResult = {
                     "scenario_id": key,
