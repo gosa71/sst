@@ -450,6 +450,57 @@ def test_compute_quote_applies_discount():
     assert result["total"] == 90
 ```
 
+## Design Decisions
+
+SST makes explicit trade-offs in its comparison model. This section documents
+intentional behaviours that may otherwise appear as gaps.
+
+### Failure scenarios in `SST_VERIFY=true` mode
+
+When `SST_VERIFY=true` is set, SST compares the current function output
+against the recorded baseline **for successful calls only**. If the function
+raises an exception in verify mode, the exception propagates as-is — the
+traceback is already the signal, and adding a second SST error on top of it
+would create noise. The full failure-scenario regression gate runs in
+`sst verify` (the replay pipeline), which compares `error_type` across
+baseline and current captures.
+
+**Summary:** In-process verify → success scenarios only. `sst verify` → all
+scenarios including failures.
+
+### Exception message (`error`) is not compared in replay
+
+When both the baseline and the current capture have `status: failure` with the
+same `error_type`, SST reports no regression — even if the exception message
+text differs.
+
+This is intentional. Exception messages are unstable by nature: they often
+contain the specific value that caused the failure (`"invalid price: -5.00"`),
+object IDs, file paths, or locale-dependent phrasing. Comparing them directly
+would produce false positives on every run, defeating the regression gate.
+
+The exception **type** (`ZeroDivisionError`, `ValueError`, etc.) is the
+stable, semantic part of a failure contract and is always compared.
+
+If the exception message is part of your public contract (for example, it is
+parsed downstream or displayed to users), surface it as a structured field in
+the function's return value and use a success-path wrapper:
+
+```python
+@sst.capture
+def safe_divide(x, y):
+    try:
+        return {"ok": True, "result": x / y}
+    except ZeroDivisionError as exc:
+        return {"ok": False, "error": str(exc)}
+```
+
+SST will then compare the `error` field as part of `raw_result` with full
+diff-policy support (including `ignored_fields`, `ignored_paths`, and
+float tolerance).
+
+---
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
