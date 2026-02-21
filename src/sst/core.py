@@ -185,6 +185,8 @@ class _Fingerprint:
                 return {k: canonicalize(v, depth + 1) for k, v in sorted(obj.items())}
             if isinstance(obj, list):
                 return [canonicalize(i, depth + 1) for i in obj]
+            if isinstance(obj, float) and obj == 0.0:
+                return "float:0.0"
             return f"{type(obj).__name__}:{obj}"
 
         struct_str = json.dumps(canonicalize(data), sort_keys=True)

@@ -34,3 +34,24 @@ def test_semantic_hash_stable_for_dict_key_order_and_masking_edge_cases():
     assert masked_left["args"][0]["token_value"] == "[MASKED_SENSITIVE_KEY]"
     assert masked_right["args"][0]["token_value"] == "[MASKED_SENSITIVE_KEY]"
     assert _Fingerprint.semantic_hash(masked_left) == _Fingerprint.semantic_hash(masked_right)
+
+
+def test_negative_zero_same_semantic_id_as_positive_zero():
+    """
+    -0.0 == 0.0 in Python and IEEE 754; semantic_id must reflect this.
+    Without normalisation, str(-0.0) == '-0.0' != '0.0', producing
+    different hashes for equal inputs.
+    """
+    from sst.core import _CaptureNormalizer, _Fingerprint
+
+    n = _CaptureNormalizer()
+
+    assert _Fingerprint.semantic_hash(n.serialize(-0.0)) == _Fingerprint.semantic_hash(
+        n.serialize(0.0)
+    )
+
+    assert _Fingerprint.semantic_hash({"x": -0.0}) == _Fingerprint.semantic_hash({"x": 0.0})
+
+    # type-strict invariants untouched
+    assert _Fingerprint.semantic_hash(True) != _Fingerprint.semantic_hash(1)
+    assert _Fingerprint.semantic_hash(1.0) != _Fingerprint.semantic_hash(1)
