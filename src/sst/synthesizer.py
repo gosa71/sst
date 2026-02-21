@@ -195,7 +195,8 @@ The output must be syntactically valid Python that passes `python -m py_compile`
                 {"role": "system", "content": "You are a Python test generation expert. Output only valid Python code."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2
+            temperature=0.2,
+            max_tokens=4096,
         )
         content = response.choices[0].message.content
         if content.startswith("```python"):
