@@ -128,7 +128,7 @@ def record(app_script, clean):
 
     os.makedirs(config.baseline_dir, exist_ok=True)
 
-    files = glob.glob(os.path.join(config.shadow_dir, "*.json"))
+    files = sorted(glob.glob(os.path.join(config.shadow_dir, "*.json")))
     saved_count = 0
     for file_path in files:
         try:

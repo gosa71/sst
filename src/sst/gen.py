@@ -17,7 +17,7 @@ class SSTGen:
         self.output_dir = output_dir
 
     def _load_captures(self, func_filter=None):
-        files = glob.glob(os.path.join(self.shadow_dir, "*.json"))
+        files = sorted(glob.glob(os.path.join(self.shadow_dir, "*.json")))
         captures = []
         for f in files:
             try:
