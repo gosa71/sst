@@ -1,403 +1,347 @@
-# SST: Production Behavior Regression Firewall
+# SST — Semantic Shadow Testing
 
+[![PyPI](https://img.shields.io/pypi/v/sst-python?color=blue&label=pypi)](https://pypi.org/project/sst-python/)
+[![CI](https://github.com/gosa71/sst/actions/workflows/ci.yml/badge.svg)](https://github.com/gosa71/sst/actions/workflows/ci.yml)
+[![SST verified](https://img.shields.io/badge/SST-verified-4caf50?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTggMUwyIDQuNXY0QzIgMTIgNSAxNSA4IDE1czYtMyA2LTYuNXYtNEw4IDF6bTMgN0w3IDEybC0yLTItMS0xIDEtMSAxIDEgMy0zIDEgMXoiLz48L3N2Zz4=)](https://github.com/gosa71/sst)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 
-SST (Semantic Shadow Testing) is not just a test generator—it is a **mission-critical regression firewall** for Python applications. It captures real production behavior and ensures that no refactoring or code change ever breaks your business logic.
-
-## Why SST?
-
-Companies don't pay for "more tests"; they pay for **stability**. SST turns your production data into a **Regression Gate** that blocks unsafe merges.
-
-*   **Guarantee Stability**: Ensure refactoring never changes the actual output of your functions.
-*   **Mission-Critical Safety**: Block PRs automatically if behavior deviates from the recorded baseline.
-*   **Zero-Effort Coverage**: Generate high-quality Pytest suites from real-world execution scenarios.
-
-## Core Workflow: The Regression Gate
-
-### 1. Record the Baseline
-Capture the "Source of Truth" from your production or staging environment.
-```bash
-sst record production_app.py
-```
-This saves the inputs, outputs, and semantic signatures into `.sst_baseline/`.
-
-### 2. Verify in CI (The Firewall)
-Add SST to your CI/CD pipeline. If a code change alters the behavior of a function, the build fails.
-```bash
-sst verify production_app.py
-```
-If a regression is detected, SST provides a **semantic diff** showing exactly what changed.
-
-### 3. Intentional Change Workflow
-If a change in behavior is intentional (e.g., a new feature), approve it to update the baseline:
-```bash
-sst approve module.function semantic_id
-```
-
-### Baseline Schema Validation
-
-SST performs strict validation of baseline scenario records during baseline load and verify flows. Validation enforces both required field presence and expected runtime field types.
-
-Required baseline schema:
-
-```yaml
-scenario:
-  module: str
-  function: str
-  semantic_id: str
-  input: dict
-  output: any
-```
-
-Notes:
-
-- Invalid baseline records raise a validation error during `sst verify` or baseline loading.
-- Strict schema validation preserves deterministic semantic replay and behavioral integrity.
-
-Example validation error:
-
-```text
-SST error [VALIDATION:BASELINE_VALIDATION_ERROR]: Invalid baseline scenario field 'input': expected dict, got list
-```
-
-### Governance Enforcement
-
-SST governance transitions are enforced with a fail-fast model. When strict governance is enabled (default behavior), invalid transition requests (for example, an unknown action/state transition) are rejected immediately instead of being silently accepted.
-
-This prevents baseline lifecycle drift and keeps approval/deprecation history auditable and deterministic in CI.
-
-### CLI Reference
-
-Use these commands to run SST as a production-grade regression firewall:
-
-```bash
-# Capture production/staging behavior into shadow artifacts
-sst record <file>
-
-# Run regression checks against the approved baseline
-sst verify <file>
-
-# Promote an intentional behavior change into the baseline
-sst approve <scenario_id>
-
-# List all scenarios and lifecycle status
-sst baseline list
-
-# Mark a scenario as obsolete while preserving audit history
-sst baseline deprecate <scenario_id>
-
-# Synthesize pytest files for all captured scenarios
-sst generate --all
-```
-
-`<scenario_id>` is the deterministic scenario key (`module.function:semantic_id`).
-
-#### Exit Codes
-
-```text
-0 → verify succeeded (no mismatches)
-1 → verify completed with baseline/capture mismatch
-2 → execution or configuration error (including validation and internal failures)
-```
-
-Deterministic exit codes make CI/CD gating reliable and automation-friendly.
-
-#### `sst verify --json` output
-
-The `--json` flag emits a machine-readable report with this structure:
-
-```json
-{
-  "summary": {
-    "timestamp": "2026-01-01T00:00:00+00:00",
-    "sst_version": "0.2.0",
-    "baseline_count": 12,
-    "capture_count": 12,
-    "mismatch_count": 1
-  },
-  "scenarios": [
-    {
-      "scenario_id": "module.function:semantic_id",
-      "status": "pass|fail",
-      "diff_summary": "",
-      "diff": [],
-      "baseline_version": "uuid-or-null"
-    }
-  ],
-  "exit_code": 0
-}
-```
-
-- `summary` aggregates run-level metadata and mismatch count.
-- `scenarios` contains one row per baseline scenario, with normalized `pass|fail` status and diff details.
-- `exit_code` mirrors verify result semantics for automation (`0` success, `1` mismatch).
+**SST turns your production function calls into a regression firewall.**
+One decorator. Automatic baselines. CI blocks the PR if behavior changed.
 
 ---
 
-## Test Confidence
+## The problem SST solves
 
-We test the full CLI lifecycle end-to-end to ensure record, verify, approve, governance, and cleanup workflows remain stable over time.
+You refactor a pricing function. Tests pass — they test what you wrote,
+not what production actually does. Three days later a customer reports
+wrong totals. The bug was in the edge case nobody thought to test.
 
-## Features
+SST captures real function calls, stores their inputs and outputs as
+baselines, and fails CI the moment behavior diverges — for any input
+it has ever seen.
 
-*   **Deterministic Replay**: Replay production scenarios in isolated environments.
-*   **Type-Safe Semantic IDs**: Fingerprinting is type-aware (`int:1` and `str:1` hash differently), so baseline scenarios keep collision-resistant identities across mixed Python data types.
-*   **Semantic Diffing**: See exactly how your logic's output changed, not just that it failed.
-*   **AI-Powered Test Synthesis**: Generate robust Pytest files with mocks and assertions using Claude 3.5 or GPT-4.
-*   **Deep PII Masking**: Built-in PII protection recursively scans and masks sensitive data (emails, cards, phones, SSNs, tokens, etc.) even when nested in lists and complex payloads.
+---
+
+## 60-second example
+
+### 1. Decorate your function
+
+```python
+# pricing.py
+from sst.core import sst
+
+@sst.capture
+def calculate_price(product_id: str, quantity: int, user_tier: str = "standard") -> dict:
+    prices = {"SKU-001": 99.9, "SKU-002": 249.0, "SKU-003": 19.9}
+    base = prices.get(product_id, 0.0)
+    discount = {"premium": 0.15, "standard": 0.0, "trial": 0.05}.get(user_tier, 0.0)
+    subtotal = round(base * quantity, 2)
+    discount_amount = round(subtotal * discount, 2)
+    total = round(subtotal - discount_amount, 2)
+    return {
+        "product_id": product_id,
+        "quantity": quantity,
+        "unit_price": base,
+        "subtotal": subtotal,
+        "discount": discount_amount,
+        "total": total,
+        "currency": "USD",
+    }
+
+if __name__ == "__main__":
+    calculate_price("SKU-001", 1, "standard")
+    calculate_price("SKU-001", 2, "premium")
+    calculate_price("SKU-002", 1, "standard")
+    calculate_price("SKU-003", 5, "trial")
+```
+
+### 2. Record the baseline
+
+```bash
+pip install sst-python
+sst record pricing.py
+# Baseline recorded: 4 scenarios saved to .sst_baseline/
+```
+
+### 3. Someone changes the price
+
+```python
+# prices = {"SKU-001": 99.9, ...}  ← before
+prices = {"SKU-001": 109.9, ...}   # ← "small fix"
+```
+
+### 4. CI catches it
+
+```bash
+sst verify pricing.py
+```
+
+![SST verify output showing FAIL with price change from 99.9 to 109.9](docs/sst_terminal.svg)
+
+Exit code `1` — **the PR is blocked.**
+
+### 5. Intentional change? Approve it.
+
+```bash
+sst approve pricing.calculate_price:<semantic_id>
+```
+
+Approval is recorded in the baseline with timestamp and history.
+Commit `.sst_baseline/` to git — baselines are versioned alongside code.
+
+---
+
+## FastAPI integration
+
+SST works with any Python function, including FastAPI endpoint handlers.
+Decorate the business logic layer, not the route itself:
+
+```python
+# app/pricing.py
+from fastapi import FastAPI
+from sst.core import sst
+
+app = FastAPI()
+
+@sst.capture(sampling_rate=0.05)   # capture 5% of production traffic
+def _calculate_price(product_id: str, quantity: int, tier: str) -> dict:
+    # ... pricing logic ...
+    return {"total": ..., "currency": "USD"}
+
+@app.get("/price")
+async def price_endpoint(product_id: str, quantity: int = 1, tier: str = "standard"):
+    return _calculate_price(product_id, quantity, tier)
+```
+
+In production SST writes captures to `.shadow_data/` asynchronously within
+the request lifecycle. On a staging run before release:
+
+```bash
+# Point at staging traffic captures, compare against baseline
+sst verify app/pricing.py
+```
+
+---
+
+## GitHub Actions — drop-in CI gate
+
+Add this workflow to your repository. SST blocks the merge if any
+captured scenario regresses:
+
+```yaml
+# .github/workflows/sst.yml
+name: SST Regression Gate
+
+on: [pull_request]
+
+jobs:
+  sst:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install sst-python
+      - run: sst verify pricing.py
+```
+
+That's it. Exit code `1` on regression means GitHub marks the check as
+failed and blocks the merge until the change is approved with `sst approve`.
+
+The `.sst_baseline/` directory must be committed to the repository so CI
+has access to the recorded baselines.
+
+---
 
 ## Installation
 
 ```bash
 pip install sst-python
+
+# With AI test generation (Claude / GPT-4):
+pip install "sst-python[llm]"
 ```
 
-## Centralized Configuration
+Requires Python 3.10+.
 
-SST can load configuration from `[tool.sst]` in `pyproject.toml` (searched from the current directory upward).
-Environment variables still override file values, so you can tune behavior in CI without editing project files.
+---
+
+## Core workflow
+
+```
+Record once          →   Verify on every PR   →   Approve intentional changes
+sst record app.py        sst verify app.py        sst approve module.fn:<id>
+      ↓                        ↓                          ↓
+.sst_baseline/          exit 0 or 1              baseline updated
+(commit to git)         (CI gate)                (auditable history)
+```
+
+---
+
+## What gets captured
+
+SST captures per-call snapshots keyed by a deterministic **semantic ID** —
+a hash of the serialized, PII-masked inputs. Two calls with the same
+inputs always produce the same semantic ID regardless of Python hash
+randomization, dict ordering, or set iteration order.
+
+Each snapshot stores:
+
+- masked and serialized inputs
+- function output or exception type
+- SST engine version and diff policy snapshot (for policy drift detection)
+
+Captures live in `.shadow_data/` (excluded from git). Baselines live in
+`.sst_baseline/` (committed to git).
+
+---
+
+## PII masking
+
+SST masks sensitive data **before** writing anything to disk.
+Built-in patterns cover email, credit card, phone, SSN, IPv4.
+Key-based masking covers `password`, `token`, `api_key`, `secret`,
+`credential`, `auth`.
+
+```python
+@sst.capture
+def process_payment(user: dict, amount: float) -> dict:
+    # user["email"] and user["card_number"] are masked before capture
+    ...
+```
+
+Custom patterns and keys:
+
+```toml
+# pyproject.toml
+[tool.sst]
+pii_keys = ["session_id", "internal_user_id"]
+pii_patterns = [
+    {label = "inn", pattern = "\\b\\d{10}\\b"},
+]
+```
+
+---
+
+## Diff policy
+
+SST compares outputs after applying a normalization policy so volatile
+fields don't create noise:
+
+```toml
+[tool.sst.diff_policy]
+ignored_fields = ["timestamp", "request_id", "trace_id"]
+float_tolerance = 0.000001
+mask_timestamps = true
+list_sort_paths = ["$.items", "$.tags"]
+```
+
+With this policy, `timestamp` changes are ignored, floats within `1e-6`
+are equal, and lists at `$.items` are sorted before comparison — so
+order-nondeterministic APIs produce stable baselines.
+
+---
+
+## Governance
+
+Every baseline scenario has a lifecycle: `pending → approved → deprecated`.
+
+```bash
+sst baseline list                          # show all scenarios and status
+sst baseline show pricing.calculate_price  # inspect a specific scenario
+sst baseline deprecate pricing.fn:<id>     # retire an obsolete scenario
+sst approve pricing.fn:<id>               # promote pending → approved
+```
+
+Approval history is stored in the baseline file and committed to git,
+giving you an auditable record of every intentional behavior change.
+
+---
+
+## AI test generation
+
+Turn captured scenarios into a full pytest suite:
+
+```bash
+sst generate --all --provider anthropic
+# or
+sst generate --all --provider openai
+```
+
+Generated tests include deterministic inputs reconstructed from captures,
+mocks for external dependencies, and explicit assertions on output fields.
+Syntax is validated before writing — no broken test files.
+
+```python
+# Auto-generated from capture
+def test_calculate_price_standard_sku001():
+    result = calculate_price("SKU-001", 1, "standard")
+    assert result["total"] == 99.9
+    assert result["currency"] == "USD"
+    assert result["discount"] == 0.0
+```
+
+---
+
+## CLI reference
+
+```bash
+sst record <file>              # capture behavior into .shadow_data/
+sst record <file> --clean      # clear shadow_data before recording
+sst verify <file>              # compare against baseline (exit 0/1)
+sst verify <file> --json       # machine-readable JSON report
+sst approve <scenario_id>      # approve intentional change
+sst baseline list              # list all scenarios with status
+sst baseline show <scenario>   # inspect a scenario record
+sst baseline deprecate <id>    # mark scenario as deprecated
+sst generate --all             # generate pytest stubs (no LLM)
+sst generate --all --provider anthropic  # generate with Claude
+```
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | All scenarios pass |
+| `1` | One or more regressions detected |
+| `2` | Configuration or execution error |
+
+---
+
+## Configuration
+
+All settings live in `pyproject.toml`. Environment variables override
+file values at runtime — useful for CI without changing project files.
 
 ```toml
 [tool.sst]
 baseline_dir = ".sst_baseline"
-shadow_dir = ".shadow_data"
-sampling_rate = 1.0
-pii_keys = ["session_token", "internal_id"]
-pii_patterns = [
-    {label = "passport_ru", pattern = "\\d{4}\\s\\d{6}"},
-    {label = "inn", pattern = "\\b\\d{10}\\b"},
-    {label = "snils", pattern = "\\d{3}-\\d{3}-\\d{3}\\s\\d{2}"}
-]
-strict_pii_matching = true  # true = exact key match; false = substring match
-governance_policy = "default"
-verify_timeout = 300  # seconds (default; increase for slow apps)
+shadow_dir   = ".shadow_data"
+sampling_rate = 1.0            # set to 0.01–0.05 for production traffic
+verify_timeout = 300           # seconds; increase for slow apps
 
 [tool.sst.diff_policy]
 ignored_fields = ["timestamp", "request_id"]
 float_tolerance = 0.000001
 mask_timestamps = true
-
-# Ignore deeply nested non-functional data using JSONPath
-ignored_paths = ["$.meta.request_id", "$.audit.trace_id"]
-
-# Stabilize comparisons when list order is non-deterministic
-list_sort_paths = ["$.items", "$.tags", "$.permissions"]
 ```
 
-Useful environment overrides include `SST_BASELINE_DIR`, `SST_SHADOW_DIR`, `SST_SAMPLING_RATE`, `SST_GOVERNANCE_POLICY`, and `SST_VERIFY_TIMEOUT`.
+Key environment overrides:
 
-Policy notes:
+| Variable | Purpose |
+|----------|---------|
+| `SST_ENABLED` | Enable capture (`true`/`false`) |
+| `SST_BASELINE_DIR` | Override baseline directory |
+| `SST_SHADOW_DIR` | Override shadow directory |
+| `SST_SAMPLING_RATE` | Override sampling rate |
+| `SST_VERIFY_TIMEOUT` | Override verify timeout (seconds) |
+| `SST_CAPTURE_ENABLED` | Master capture switch |
 
-- Prefer `ignored_paths` when volatile fields are nested and you need precise suppression without dropping whole objects.
-- Use `list_sort_paths` to specify JSONPath expressions for arrays whose
-  element order is non-deterministic (e.g., `["$.items", "$.tags"]`).
-  Only listed paths are sorted; all other lists are compared positionally.
-- PII masking is recursive by default and traverses nested dict/list payloads automatically, so deep sensitive values are still protected.
-- Use `pii_patterns` to add domain-specific regex patterns (e.g. national ID formats, internal codes) beyond the built-in set. Invalid patterns are skipped with a warning and never raise.
-- Set `strict_pii_matching = false` to catch compound key names like `old_password` or `user_token` in addition to exact matches.
+---
 
-## First Run: Hello World in 3 Steps
+## Serializing custom objects
 
-### 1) Install and decorate
-
-```bash
-pip install sst-python
-```
-
-```python
-from sst import capture
-
-@capture
-def price_quote(total: int, discount: int = 0) -> dict:
-    final = max(total - discount, 0)
-    return {"total": total, "discount": discount, "final": final}
-```
-
-### 2) Record baseline
-
-```bash
-sst record app.py
-```
-
-### 3) Verify change
-
-```bash
-sst verify app.py
-```
-
-If behavior changes, SST fails verification with a semantic diff so you can approve only intentional deltas.
-
-
-### Using Local LLMs
-
-SST supports local LLM providers for test generation without requiring cloud API keys.
-
-#### Ollama
-
-```bash
-export SST_PROVIDER=ollama
-export SST_MODEL=qwen2.5-coder:7b
-sst generate --all
-```
-
-#### LM Studio
-
-```bash
-export SST_PROVIDER=lmstudio
-export SST_MODEL=llama-3.1-8b-instruct
-sst generate --all
-```
-
-#### Custom OpenAI-compatible API (vLLM, LocalAI, etc.)
-
-```bash
-export SST_PROVIDER=local
-export SST_BASE_URL=http://localhost:8000/v1
-export SST_MODEL=your-model-name
-sst generate --all
-```
-
-
-## Production capture
-
-Use sampling to keep runtime overhead predictable when capture is enabled in production.
-
-- Global sampling defaults to `1.0` (capture every call) and can be set in `[tool.sst]` with `sampling_rate = 0.05`.
-- `SST_SAMPLING_RATE` overrides the config file at runtime.
-- You can override sampling per function: `@sst.capture(sampling_rate=0.05)`.
-- Set `SST_CAPTURE_ENABLED=false` to disable capture globally without changing code.
-
-Lower sampling rates reduce file I/O and serialization overhead while still collecting representative production behavior.
-
-
-
-## How it works under the hood
-
-SST runs as a layered pipeline from runtime capture to policy-enforced approval:
-
-```mermaid
-flowchart TD
-    A[Decorated function call
-@sst.capture] --> B[Serialize + mask PII]
-    B --> C[Compute semantic_id
-from canonicalized inputs]
-    C --> D[Write capture JSON
-.shadow_data]
-    D --> E{Verify mode?}
-    E -- no --> F[Done]
-    E -- yes --> G[Load baseline
-.sst_baseline]
-    G --> H[Apply diff policy
-ignored fields + normalization]
-    H --> I[Structured deep diff]
-    I --> J{Changes?}
-    J -- no --> K[Pass]
-    J -- yes --> L[Regression error + guidance
-sst approve module.function semantic_id]
-```
-
-Key internal mechanics:
-
-- **Scenario identity** is `module.function:semantic_id`, where `semantic_id` is a deterministic hash of masked/canonicalized inputs.
-- **Diffing is policy first**: noisy fields are suppressed and floats/timestamps normalized before value comparison.
-- **Governance metadata** tracks status (`pending`, `approved`, `deprecated`), version IDs, and approval history for auditable baseline lifecycle.
-- **Replay mode** matches captures to baselines by scenario identity and produces structured + human-readable diffs for CI.
-
-## Production best practices
-
-### 1) Where to place `@sst.capture`
-
-- Decorate **business-logic boundaries** (pricing, eligibility, scoring, reconciliation, critical transforms).
-- Avoid wrapping ultra-low-level utility functions unless they represent stable contract surfaces.
-- Prefer one decorator per meaningful unit of behavior over broad blanket instrumentation.
-
-### 2) Overhead considerations
-
-Capture overhead is mainly:
-
-- serialization/deserialization,
-- masking + hashing,
-- JSON file I/O.
-
-To keep p95 latency predictable:
-
-- start with selective instrumentation,
-- keep payloads compact where possible,
-- tune `sampling_rate` for high-volume endpoints,
-- disable quickly with `SST_CAPTURE_ENABLED=false` during incidents.
-
-SST hardens production use with built-in recursion protection (`MAX_DEPTH`) and high-performance recursive PII masking, making large nested payloads safe to capture and compare.
-
-### 3) Use sampling intentionally
-
-- Start with low rates (for example `0.01`–`0.05`) on hot paths.
-- Increase temporarily during launches/migrations to collect richer behavior.
-- Use per-function overrides (`@sst.capture(sampling_rate=...)`) when one module needs finer coverage than the global default.
-
-Note: `sst verify` always forces `sampling_rate=1.0` internally regardless of your configured value. This ensures the regression gate always sees the full scenario set. Your production sampling rate only affects live capture, never verification.
-
-### 4) Baseline migration strategy
-
-- Treat baseline updates as controlled change events.
-- When behavior change is intentional, review semantic diff output and then approve targeted scenarios.
-- Keep baseline format/version metadata in source control if you snapshot baselines for release governance.
-- Deprecate obsolete scenarios instead of deleting blindly, so replay scope remains explicit.
-
-### 5) Large-project operating tips
-
-- Partition capture directories by service/component in monorepos to avoid oversized artifact buckets.
-- Run verify in parallel shards by module ownership when baseline sets become large.
-- Standardize `ignored_fields` centrally to reduce team-by-team drift.
-- Add governance list/show checks in CI dashboards so owners can monitor pending/deprecated scenario trends.
-
-## Custom policy examples
-
-### Custom diff policy (programmatic)
-
-```python
-from sst.diff import DiffPolicy, apply_diff_policy, normalize_for_compare
-
-fintech_policy = DiffPolicy(
-    policy_id="fintech-v1",
-    semantics_version=1,
-    ignored_fields={"request_id", "trace_id", "generated_at"},
-)
-
-baseline = normalize_for_compare(apply_diff_policy(baseline_payload, policy=fintech_policy))
-current = normalize_for_compare(apply_diff_policy(current_payload, policy=fintech_policy))
-```
-
-### Custom governance transition policy (programmatic)
-
-```python
-from sst.governance import GovernancePolicy, evaluate_governance_decision
-
-policy = GovernancePolicy(
-    policy_id="strict-approval-v1",
-    transitions={
-        ("approve", "pending"): (True, "APPROVE_ALLOWED", "Initial approval allowed."),
-        ("approve", "approved"): (False, "REAPPROVE_REQUIRES_REVIEW", "Second approval requires review board."),
-        ("deprecate", "approved"): (True, "DEPRECATE_ALLOWED", "Scenario retirement allowed."),
-    },
-)
-
-decision = evaluate_governance_decision("approve", "approved", policy=policy)
-print(decision.allowed, decision.reason_code)
-```
-
-## Advanced Usage
-
-### AI Test Generation
-Generate a full Pytest suite from your captured data:
-```bash
-sst generate --all --provider anthropic --edit
-```
-
-### Serializing Custom Objects
-
-SST serializes function inputs and outputs to JSON for capture and comparison. For standard Python types (dicts, lists, primitives, dataclasses) this works automatically.
-
-For objects that do not have a `__dict__` or whose `repr()` is non-deterministic (e.g. includes memory addresses), implement the `__sst_serialize__` protocol:
+SST serializes standard Python types automatically. For custom classes,
+implement `__sst_serialize__`:
 
 ```python
 class Money:
@@ -409,82 +353,41 @@ class Money:
         return {"amount": self.amount, "currency": self.currency}
 ```
 
-SST calls `__sst_serialize__()` before falling back to `__dict__` introspection. The method should return any JSON-serializable value (dict, list, str, int, float, bool, or None).
+Without `__sst_serialize__`, SST falls back to `__dict__` (deterministic
+for most classes) or `repr()` (potentially non-deterministic for objects
+with memory addresses in their repr — use `__sst_serialize__` when stable
+`semantic_id` is required).
 
-Objects without `__sst_serialize__` and without `__dict__` are serialized as `{"__class__": "ClassName", "__repr__": "..."}` — stable enough for auditing but not guaranteed deterministic. Implement `__sst_serialize__` when deterministic `semantic_id` is required for custom types.
+---
 
-### Getting Started with AI Synthesis
-
-AI synthesis requires an API key for the provider you choose:
-
-```bash
-export OPENAI_API_KEY="your-openai-key"
-export ANTHROPIC_API_KEY="your-anthropic-key"
-```
-
-Provider selection:
-
-- `--provider anthropic`: uses Anthropic models (for teams standardized on Claude).
-- `--provider openai`: uses OpenAI models (for teams standardized on GPT).
-
-Example:
-
-```bash
-sst generate --all --provider openai
-```
-
-Generated tests include deterministic setup, mocking, and explicit assertions. A minimal example:
-
-```python
-from unittest.mock import patch
-
-from app import compute_quote
-
-
-def test_compute_quote_applies_discount():
-    with patch("app.fetch_discount", return_value=10):
-        result = compute_quote(user_id="u-1", subtotal=100)
-
-    assert result["subtotal"] == 100
-    assert result["discount"] == 10
-    assert result["total"] == 90
-```
-
-## Design Decisions
-
-SST makes explicit trade-offs in its comparison model. This section documents
-intentional behaviours that may otherwise appear as gaps.
+## Design decisions
 
 ### Failure scenarios in `SST_VERIFY=true` mode
 
 When `SST_VERIFY=true` is set, SST compares the current function output
-against the recorded baseline **for successful calls only**. If the function
-raises an exception in verify mode, the exception propagates as-is — the
-traceback is already the signal, and adding a second SST error on top of it
-would create noise. The full failure-scenario regression gate runs in
-`sst verify` (the replay pipeline), which compares `error_type` across
-baseline and current captures.
+against the recorded baseline **for successful calls only**. If the
+function raises an exception in verify mode, the exception propagates
+as-is — the traceback is already the signal. The full failure-scenario
+regression gate runs in `sst verify` (the replay pipeline), which
+compares `error_type` across baseline and current captures.
 
-**Summary:** In-process verify → success scenarios only. `sst verify` → all
-scenarios including failures.
+**Summary:** in-process verify → success scenarios only.
+`sst verify` → all scenarios including failures.
 
-### Exception message (`error`) is not compared in replay
+### Exception message is not compared in replay
 
-When both the baseline and the current capture have `status: failure` with the
-same `error_type`, SST reports no regression — even if the exception message
-text differs.
+When both baseline and current capture have `status: failure` with the
+same `error_type`, SST reports no regression — even if the exception
+message text differs.
 
-This is intentional. Exception messages are unstable by nature: they often
-contain the specific value that caused the failure (`"invalid price: -5.00"`),
-object IDs, file paths, or locale-dependent phrasing. Comparing them directly
-would produce false positives on every run, defeating the regression gate.
-
-The exception **type** (`ZeroDivisionError`, `ValueError`, etc.) is the
+Exception messages are unstable by nature: they often contain the
+specific value that caused the failure (`"invalid price: -5.00"`),
+object IDs, or locale-dependent phrasing. Comparing them directly would
+produce false positives on every run. The exception **type** is the
 stable, semantic part of a failure contract and is always compared.
 
-If the exception message is part of your public contract (for example, it is
-parsed downstream or displayed to users), surface it as a structured field in
-the function's return value and use a success-path wrapper:
+If the exception message is part of your public contract, surface it as
+a structured field in the function's return value:
 
 ```python
 @sst.capture
@@ -495,41 +398,28 @@ def safe_divide(x, y):
         return {"ok": False, "error": str(exc)}
 ```
 
-SST will then compare the `error` field as part of `raw_result` with full
-diff-policy support (including `ignored_fields`, `ignored_paths`, and
-float tolerance).
+---
+
+## Versioning and compatibility
+
+SST baselines store the engine version and policy snapshot used at
+capture time. During `sst verify`:
+
+- If the baseline engine version differs from the current SST version,
+  an advisory warning is emitted.
+- If the diff policy snapshot differs from the current runtime policy,
+  SST reports `POLICY_DRIFT` and fails the scenario.
+
+Older baselines without these fields still load; missing fields produce
+advisory warnings, not hard failures. Re-approval is recommended when
+policy or engine version changes materially.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
-## GitHub Repository
+## Contributing
 
-Contribute to the future of behavioral testing on [GitHub](https://github.com/gosa71/sst).
-
-## Versioning and Compatibility Guarantees
-
-SST baselines now persist interpreter and policy contract metadata to reduce silent reinterpretation risk across upgrades:
-
-- `scenario.engine_version`: SST engine version used during capture.
-- `metadata.diff_policy_snapshot`: effective diff/normalization policy snapshot (`policy_id`, `semantics_version`, `config`, `hash`).
-- `metadata.governance_policy_snapshot`: effective governance transition policy snapshot (`policy_id`, transitions, `hash`).
-
-During `sst verify` / replay:
-
-- If baseline `engine_version` differs from current SST version, SST emits advisory warning:
-  - `Baseline captured with SST vX.Y.Z, current vA.B.C — potential reinterpretation risk`
-- If policy snapshots differ from current runtime policy, SST reports `POLICY_DRIFT` regression.
-- If baseline diff `semantics_version` is older than current, SST reports incompatibility drift (normalization semantics may differ).
-
-Backward compatibility:
-
-- Older baselines without these fields still load.
-- Missing fields generate advisory warnings, not hard failures.
-- Re-approval is recommended when policy/semantics or engine version changes materially.
-
-Normalization compatibility rule:
-
-- Any semantic change to `normalize_for_compare` (sorting, float handling, timestamp/UUID masking, new normalizers) requires bumping `DiffPolicy.semantics_version` and baseline re-approval.
+[github.com/gosa71/sst](https://github.com/gosa71/sst)
