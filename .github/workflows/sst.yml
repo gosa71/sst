@@ -1,0 +1,29 @@
+name: SST Regression Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  sst:
+    name: Behavior regression check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SST
+        run: pip install sst-python
+
+      - name: Verify behavior against baseline
+        run: sst verify pricing.py
+        # Exit code 1 = regression detected → PR is blocked.
+        # To approve an intentional change:
+        #   sst approve pricing.calculate_price:<semantic_id>
+        # Then commit the updated .sst_baseline/ to unblock the PR.
