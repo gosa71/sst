@@ -176,7 +176,7 @@ def load_baseline_record(path: str) -> BaselineRecord:
 def save_baseline_record(path: str, record: BaselineRecord) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
-        json.dump(record, handle, indent=2, sort_keys=True)
+        json.dump(record, handle, indent=2, sort_keys=True, allow_nan=False)
 
 
 def create_baseline_from_capture(capture_data: Dict[str, Any]) -> BaselineRecord:

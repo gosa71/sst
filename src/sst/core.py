@@ -317,7 +317,7 @@ class SSTCore:
                 f"{datetime.now(timezone.utc).strftime('%H%M%S_%f')}.json"
             )
             with open(os.path.join(self.storage_dir, filename), "w", encoding="utf-8") as f:
-                json.dump(asdict(capture_payload), f, indent=2, sort_keys=True)
+                json.dump(asdict(capture_payload), f, indent=2, sort_keys=True, allow_nan=False)
         except Exception as write_err:
             logger.warning("SST: Failed to write capture data: %s", write_err)
 

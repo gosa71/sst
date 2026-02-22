@@ -143,8 +143,8 @@ def record(app_script, clean):
             baseline_record = create_baseline_from_capture(capture_data)
             save_baseline_record(os.path.join(config.baseline_dir, baseline_name), baseline_record)
             saved_count += 1
-        except KeyError as exc:
-            logger.warning("Skipping capture file %s: missing required field %s", file_path, exc)
+        except (KeyError, ValueError) as exc:
+            logger.warning("Skipping capture file %s: %s", file_path, exc)
             continue
 
     if process_failed and not files:
