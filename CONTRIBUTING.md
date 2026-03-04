@@ -1,23 +1,91 @@
 # Contributing to SST
 
-We welcome contributions to SST! Whether it's fixing bugs, adding new features, or improving documentation, your help is appreciated.
+Bug fixes, new features, and documentation improvements are all welcome.
 
-## How to Contribute
+## Setup
 
-1.  **Fork the repository** and create your branch from `main`.
-2.  **Install dependencies**: `pip install -e .`
-3.  **Make your changes**.
-4.  **Add tests** for your changes in `test_sst_meta.py` or new test files.
-5.  **Run tests**: `pytest test_sst_meta.py`
-6.  **Submit a Pull Request**.
+```bash
+git clone https://github.com/gosa71/sst
+cd sst
+pip install -e ".[fastapi,llm,test]"
+```
 
-## Areas for Contribution
+The project uses `src/` layout — all source lives in `src/sst/`.
 
-*   **New PII Patterns**: Add more regex patterns to `sst_core.py` to mask sensitive data.
-*   **LLM Providers**: Help us support more LLM providers or improve the prompt engineering.
-*   **CLI Improvements**: Add more useful commands or options to the CLI.
-*   **Integrations**: Build integrations for CI/CD pipelines or IDEs.
+## Running tests
 
-## Code of Conduct
+```bash
+pytest                          # full suite
+pytest tests/test_sst_core.py  # single file
+pytest -m "not e2e"            # skip slow end-to-end tests
+```
 
-Please be respectful and professional in all your interactions with the project and its contributors.
+Tests require no external services. The `[test]` extra installs
+`pytest` and `freezegun`. The `[fastapi]` extra installs `starlette`
+which is required for `tests/test_sst_middleware.py` — that file is
+skipped automatically when starlette is not installed.
+
+## Project structure
+
+```
+src/sst/
+  core.py          # @sst.capture decorator, SSTCore, serialization, PII masking
+  middleware.py    # SSTMiddleware — HTTP capture for FastAPI / Starlette
+  diff.py          # DiffPolicy, structured diff engine
+  replay.py        # ReplayEngine — baseline vs capture comparison
+  governance.py    # lifecycle transitions, approval history
+  gen.py           # AI test generation (optional LLM dependency)
+  cli.py           # sst CLI entry point
+  config.py        # pyproject.toml loader
+  types.py         # CapturePayload, BaselineRecord, and other dataclasses
+  schema.py        # JSON schema validation
+
+tests/
+  test_sst_core.py
+  test_sst_middleware.py
+  test_sst_diff.py
+  test_sst_governance.py
+  test_sst_replay.py
+  ... (one file per module)
+```
+
+## Areas for contribution
+
+**PII masking** — add regex patterns or key names in `src/sst/core.py`
+(`_CaptureNormalizer`). Pattern format: `{label, pattern}` dict, same
+as `[tool.sst.pii_patterns]` in `pyproject.toml`.
+
+**LLM providers** — `src/sst/synthesizer.py` and `src/sst/gen.py`.
+Add a new provider branch alongside the existing `anthropic` / `openai`
+paths. Gate the import with `try/except ImportError`.
+
+**Middleware integrations** — `src/sst/middleware.py` targets
+Starlette/FastAPI today. Django, Flask, or gRPC integrations would
+follow the same pattern: capture inputs, capture output, call
+`_write_http_capture` (or construct `CapturePayload` directly).
+
+**CLI commands** — `src/sst/cli.py` uses Click. New subcommands go
+under the existing `baseline` group or as top-level commands.
+
+**Diff policy** — `src/sst/diff.py`. New normalization rules go into
+`normalize_for_compare`; new change types go into `build_structured_diff`.
+
+## Code style
+
+- Python 3.10+. No dependencies outside stdlib for the core module
+  (`src/sst/core.py`) — `click` is the only runtime dependency.
+- `starlette` is optional (`[fastapi]` extra).
+- LLM SDKs are optional (`[llm]` extra).
+- All new public functions need a docstring.
+- All new code paths need a test.
+
+## Pull request checklist
+
+- [ ] `pytest` passes with no errors
+- [ ] New feature has tests in `tests/`
+- [ ] Optional dependencies are gated with `try/except ImportError`
+- [ ] No new mandatory dependencies added to `[project.dependencies]`
+
+## Code of conduct
+
+Be respectful and professional in all interactions.
