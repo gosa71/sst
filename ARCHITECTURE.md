@@ -251,9 +251,16 @@ The governance loader has explicit migration hooks (`_migrate_record_for_version
 Capture can be tuned per function with `@sst.capture(sampling_rate=...)` and globally with config/env overrides. This is the primary extension point for balancing observability vs overhead in production paths.
 
 `sst verify` always overrides `SST_SAMPLING_RATE=1.0` in the subprocess environment it spawns. This guarantees the regression gate captures every decorated call regardless of the project's configured sampling rate. Production sampling is intentionally isolated from verification completeness.
-The same sampling override applies to `SSTMiddleware` — the middleware
-reads `SST_SAMPLING_RATE` from the environment at dispatch time, so
-`sst verify` guarantees full HTTP capture coverage during replay.
+For `SSTMiddleware`, the `SST_SAMPLING_RATE=1.0` override applies only
+when `sampling_rate` was **not** passed to `add_middleware`. In that case
+the middleware reads the env var at dispatch time and the override takes
+effect. When `sampling_rate` is set explicitly — e.g.
+`app.add_middleware(SSTMiddleware, sampling_rate=0.05)` — that value is
+stored as `self._sampling_rate` and passed directly to
+`_should_sample_capture`, bypassing the environment entirely. In that
+configuration `sst verify` does **not** guarantee full HTTP capture
+coverage. Set `sampling_rate=None` or `sampling_rate=1.0` in the
+middleware constructor when running verification.
 
 ## Versioning and Compatibility Guarantees
 
