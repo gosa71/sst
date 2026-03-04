@@ -138,12 +138,31 @@ app.add_middleware(SSTMiddleware, sampling_rate=0.05)
 pip install "sst-python[fastapi]"
 ```
 
-**Record and verify work the same way:**
+**Record and verify require a replay script:**
+
+`sst record` and `sst verify` execute a Python script directly —
+they do not start a server. Create a companion script that imports
+your app and calls the route handlers with representative inputs:
+
+```python
+# replay_main.py
+import os
+os.environ.setdefault("SST_ENABLED", "true")
+
+from main import app
+from starlette.testclient import TestClient
+
+client = TestClient(app)
+client.post("/api/orders", json={"product_id": "SKU-001", "quantity": 1})
+client.get("/api/price", params={"product_id": "SKU-001"})
+# add one call per endpoint you want in the baseline
+```
+
+Then record and verify against that script:
 
 ```bash
-SST_ENABLED=true uvicorn main:app  # run with capture on
-sst record main.py                 # or use CLI record mode
-sst verify main.py                 # compare against baseline
+sst record replay_main.py   # captures each call as a baseline scenario
+sst verify replay_main.py   # replays and compares against baseline
 ```
 
 Baseline scenarios appear as `POST /api/orders`, `GET /api/price` in
