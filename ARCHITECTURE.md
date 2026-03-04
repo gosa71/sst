@@ -6,7 +6,7 @@ SST is organized as a deterministic pipeline that turns live execution into poli
 
 ```mermaid
 flowchart LR
-    A[Capture layer\n@sst.capture decorator\nSSTCore] --> B[Replay layer\nReplayEngine + verify mode]
+    A[Capture layer\n@sst.capture decorator\nSSTMiddleware HTTP\nSSTCore] --> B[Replay layer\nReplayEngine + verify mode]
     B --> C[Diff layer\nDiffPolicy + structured diff]
     C --> D[Governance layer\nbaseline metadata + transitions]
     D --> E[Synthesis layer\npytest generation from captures]
@@ -18,7 +18,22 @@ flowchart LR
 
 ### Layer responsibilities
 
-- **Capture**: serializes function inputs/outputs via `_CaptureNormalizer.serialize`, masks PII, assigns `semantic_id`, and writes JSON artifacts in the shadow directory. Custom classes can implement `__sst_serialize__(self) -> Any` to control serialization; SST calls it before falling back to `__dict__` introspection or a structured `{"__class__", "__repr__"}` fallback.
+- **Capture**: two entry points feed the same pipeline.
+  - `@sst.capture` — decorator on a Python function. Serializes function
+    arguments via `_CaptureNormalizer.serialize`, masks PII, assigns
+    `semantic_id` from the masked inputs, and writes a `CapturePayload`
+    JSON artifact to `.shadow_data/`. Custom classes can implement
+    `__sst_serialize__(self) -> Any` to control serialization; SST calls
+    it before falling back to `__dict__` or a structured
+    `{"__class__", "__repr__"}` fallback.
+  - `SSTMiddleware` — Starlette/FastAPI ASGI middleware. Captures the
+    HTTP boundary instead of a Python function: inputs are
+    `{method, path, path_params, query_params, body}` (headers excluded),
+    output is the JSON response body or an `HTTP_<status>` error record.
+    Constructs `CapturePayload` directly (bypasses `_build_payload` which
+    requires a real callable) with `function = "METHOD /path"` and
+    `module = "http"`. Serialization, PII masking, sampling, and
+    `semantic_id` assignment are identical to the decorator path.
 - **Replay**: aligns baseline and current captures by deterministic scenario key (`module.function:semantic_id`) and compares outputs.
 - **Diff**: applies configured suppression/normalization policy, then computes path-aware structured changes.
 - **Governance**: stores baseline status/version metadata, validates allowed transition actions, and preserves audit history.
@@ -41,6 +56,67 @@ Implications:
 - **Input-centric identity**: changing only output behavior keeps the same `semantic_id`, which is exactly what regression checks need.
 - **Type-aware collision resistance**: canonicalization includes primitive type names (`int:1` and `str:1` are distinct) to prevent cross-type collisions in semantic IDs.
 - **PII-safe hashing**: IDs derive from masked payloads, so raw sensitive values are not embedded in baseline identity.
+
+## HTTP capture via SSTMiddleware
+
+`SSTMiddleware` provides a zero-decorator capture path for
+FastAPI/Starlette applications. It sits at the ASGI middleware layer
+and intercepts every request that passes the path filter and sampling
+gate.
+
+### Input canonicalization
+
+HTTP inputs that feed `semantic_id` hashing:
+
+```python
+inputs = {
+    "method": request.method,          # "GET", "POST", etc.
+    "path": request.url.path,          # "/api/orders"
+    "path_params": dict(...),          # {"order_id": "42"}
+    "query_params": dict(...),         # {"page": "1"}
+    "body": parsed_json_or_empty_dict, # {} for non-JSON bodies
+}
+```
+
+Headers are excluded — they contain auth tokens, `X-Request-ID`, and
+other values that are volatile and PII-heavy.
+
+### Why `_build_payload` is not used
+
+`_build_payload` calls `_cached_get_source(func)` and
+`_cached_analyze_dependencies(func)`, both decorated with `lru_cache`.
+`lru_cache` requires a hashable argument; neither a `SimpleNamespace`
+nor a frozen dataclass stub satisfies `inspect.getsource()` which
+requires a real callable. Any stub causes a `TypeError` that is silently
+swallowed by `_write_capture`'s `except Exception`, resulting in captures
+never being written with no visible error.
+
+`SSTMiddleware` constructs `CapturePayload` directly. `CapturePayload`
+is a public `@dataclass` in `sst.types` — part of the stable contract.
+The middleware sets `dependencies=[]` and `source=""` (no Python source
+available at the HTTP layer).
+
+### Atomic write
+
+The middleware serializes `CapturePayload` to a JSON string with
+`json.dumps(..., allow_nan=False)` **before** opening the output file.
+If serialization fails (e.g. `inf`/`nan` in response body), the
+`except Exception` handler fires before any file is created — no empty
+or partial files are left on disk.
+
+### Scenario identity in baseline
+
+Middleware captures appear in `sst baseline list` as:
+
+```
+http  POST /api/orders  abc123...  pending
+http  GET  /api/price   def456...  approved
+```
+
+The `function` field stores `"METHOD /path"` and `module` stores
+`"http"`. All existing SST CLI commands (`sst verify`, `sst approve`,
+`sst baseline deprecate`) work identically for HTTP and function-level
+captures.
 
 ## Serialization protocol
 
@@ -175,6 +251,9 @@ The governance loader has explicit migration hooks (`_migrate_record_for_version
 Capture can be tuned per function with `@sst.capture(sampling_rate=...)` and globally with config/env overrides. This is the primary extension point for balancing observability vs overhead in production paths.
 
 `sst verify` always overrides `SST_SAMPLING_RATE=1.0` in the subprocess environment it spawns. This guarantees the regression gate captures every decorated call regardless of the project's configured sampling rate. Production sampling is intentionally isolated from verification completeness.
+The same sampling override applies to `SSTMiddleware` — the middleware
+reads `SST_SAMPLING_RATE` from the environment at dispatch time, so
+`sst verify` guarantees full HTTP capture coverage during replay.
 
 ## Versioning and Compatibility Guarantees
 
