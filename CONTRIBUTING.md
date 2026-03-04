@@ -16,7 +16,7 @@ The project uses `src/` layout — all source lives in `src/sst/`.
 
 ```bash
 pytest                          # full suite
-pytest tests/test_sst_core.py  # single file
+pytest tests/test_sst_meta.py  # single file
 pytest -m "not e2e"            # skip slow end-to-end tests
 ```
 
@@ -41,7 +41,7 @@ src/sst/
   schema.py        # JSON schema validation
 
 tests/
-  test_sst_core.py
+  test_sst_meta.py
   test_sst_middleware.py
   test_sst_diff.py
   test_sst_governance.py
