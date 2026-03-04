@@ -6,8 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 
-**SST turns your production function calls into a regression firewall.**
-One decorator. Automatic baselines. CI blocks the PR if behavior changed.
+**SST turns your production traffic into a regression firewall.**
+One middleware or one decorator. Automatic baselines. CI blocks the PR if behavior changed.
 
 ---
 
@@ -24,6 +24,10 @@ it has ever seen.
 ---
 
 ## 60-second example
+
+**FastAPI / Starlette?** → jump to [FastAPI / Starlette — zero-decorator capture](#fastapi--starlette--zero-decorator-capture)
+
+**Any other Python code?** → follow the steps below.
 
 ### 1. Decorate your function
 
@@ -92,35 +96,103 @@ Commit `.sst_baseline/` to git — baselines are versioned alongside code.
 
 ---
 
-## FastAPI integration
+## FastAPI / Starlette — zero-decorator capture
 
-SST works with any Python function, including FastAPI endpoint handlers.
-Decorate the business logic layer, not the route itself:
+For FastAPI and Starlette projects, add one line to `main.py`.
+No decorators anywhere in your application code:
 
 ```python
-# app/pricing.py
+# main.py
 from fastapi import FastAPI
-from sst.core import sst
+from sst.middleware import SSTMiddleware
 
 app = FastAPI()
-
-@sst.capture(sampling_rate=0.05)   # capture 5% of production traffic
-def _calculate_price(product_id: str, quantity: int, tier: str) -> dict:
-    # ... pricing logic ...
-    return {"total": ..., "currency": "USD"}
-
-@app.get("/price")
-async def price_endpoint(product_id: str, quantity: int = 1, tier: str = "standard"):
-    return _calculate_price(product_id, quantity, tier)
+app.add_middleware(SSTMiddleware)  # that's it
 ```
 
-In production SST writes captures to `.shadow_data/` asynchronously within
-the request lifecycle. On a staging run before release:
+SST captures every request/response pair as a baseline scenario.
+The `semantic_id` is derived from method, path, path params, query params,
+and JSON body — headers are excluded (they contain auth tokens and
+request IDs that change on every call).
+
+**Filter to specific paths:**
+
+```python
+# Only capture business-critical endpoints
+app.add_middleware(SSTMiddleware, include_paths=["/api/orders", "/api/price"])
+
+# Exclude noisy infrastructure routes
+app.add_middleware(SSTMiddleware, exclude_paths=["/health", "/metrics", "/docs"])
+```
+
+**Control sampling in production:**
+
+```python
+# Capture 5% of production traffic
+app.add_middleware(SSTMiddleware, sampling_rate=0.05)
+```
+
+**Install:**
 
 ```bash
-# Point at staging traffic captures, compare against baseline
-sst verify app/pricing.py
+pip install "sst-python[fastapi]"
 ```
+
+**Record and verify work the same way:**
+
+```bash
+SST_ENABLED=true uvicorn main:app  # run with capture on
+sst record main.py                 # or use CLI record mode
+sst verify main.py                 # compare against baseline
+```
+
+Baseline scenarios appear as `POST /api/orders`, `GET /api/price` in
+`sst baseline list` — readable HTTP identifiers, not Python function names.
+
+---
+
+## @sst.capture — function-level control
+
+For non-FastAPI code, or when you want precise control over exactly
+which function is the contract boundary:
+
+```python
+# pricing.py
+from sst.core import sst
+
+@sst.capture
+def calculate_price(product_id: str, quantity: int, user_tier: str = "standard") -> dict:
+    prices = {"SKU-001": 99.9, "SKU-002": 249.0, "SKU-003": 19.9}
+    base = prices.get(product_id, 0.0)
+    discount = {"premium": 0.15, "standard": 0.0, "trial": 0.05}.get(user_tier, 0.0)
+    subtotal = round(base * quantity, 2)
+    discount_amount = round(subtotal * discount, 2)
+    total = round(subtotal - discount_amount, 2)
+    return {
+        "product_id": product_id,
+        "quantity": quantity,
+        "unit_price": base,
+        "subtotal": subtotal,
+        "discount": discount_amount,
+        "total": total,
+        "currency": "USD",
+    }
+
+if __name__ == "__main__":
+    calculate_price("SKU-001", 1, "standard")
+    calculate_price("SKU-001", 2, "premium")
+    calculate_price("SKU-002", 1, "standard")
+    calculate_price("SKU-003", 5, "trial")
+```
+
+```bash
+sst record pricing.py   # captures the 4 calls above as baseline
+sst verify pricing.py   # fails if any output changed
+```
+
+Both `SSTMiddleware` and `@sst.capture` write to the same `.shadow_data/`
+directory and use the same baseline format — `sst verify`, `sst approve`,
+and `sst baseline` commands work identically for both.
 
 ---
 
@@ -157,8 +229,14 @@ has access to the recorded baselines.
 ```bash
 pip install sst-python
 
+# With FastAPI / Starlette middleware:
+pip install "sst-python[fastapi]"
+
 # With AI test generation (Claude / GPT-4):
 pip install "sst-python[llm]"
+
+# Everything:
+pip install "sst-python[fastapi,llm]"
 ```
 
 Requires Python 3.10+.
@@ -183,6 +261,10 @@ SST captures per-call snapshots keyed by a deterministic **semantic ID** —
 a hash of the serialized, PII-masked inputs. Two calls with the same
 inputs always produce the same semantic ID regardless of Python hash
 randomization, dict ordering, or set iteration order.
+
+For `@sst.capture`, inputs are the function arguments. For `SSTMiddleware`,
+inputs are `{method, path, path_params, query_params, body}` — headers
+are excluded as they contain volatile auth tokens and request IDs.
 
 Each snapshot stores:
 
