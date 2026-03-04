@@ -27,6 +27,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+fastapi = ["starlette>=0.20"]
 llm = ["openai>=1.0.0", "anthropic>=0.25.0"]
 test = ["pytest>=7.0", "freezegun>=1.2"]
 
