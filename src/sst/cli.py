@@ -417,12 +417,111 @@ def baseline_show(scenario_id):
     click.echo(json.dumps(record, indent=2, sort_keys=True))
 
 
+def _find_orphaned_scenarios(baseline_dir: str, shadow_dir: str) -> list[dict]:
+    """Return baseline scenarios that have no matching capture in shadow_dir.
+
+    A scenario is considered orphaned when its ``module.function:semantic_id``
+    key does not appear in any capture file currently in *shadow_dir*.  The
+    comparison is based on the capture filename pattern
+    ``<module>.<function>_<semantic_id>_<timestamp>.json`` already used
+    elsewhere in the CLI.
+
+    Returns a list of dicts with keys ``scenario_id`` and ``file``.
+
+    Raises ``SSTError`` when *shadow_dir* does not exist or is empty — the
+    caller cannot determine orphan status without capture data.
+    """
+    if not os.path.exists(shadow_dir) or not glob.glob(os.path.join(shadow_dir, "*.json")):
+        raise SSTError(
+            "NO_CAPTURES",
+            "USER",
+            f"shadow_dir '{shadow_dir}' is empty or does not exist. "
+            "Run 'sst record <script>' first to populate it.",
+        )
+
+    # Build set of "module.function:semantic_id" keys present in captures.
+    # SSTMiddleware replaces "/" with "_" in the path when writing the capture
+    # filename (e.g. "POST /api/orders" -> "POST_api_orders" in the filename).
+    # Normalise the same way so HTTP captures match their baselines.
+    captured_keys: set[str] = set()
+    for cap_path in glob.glob(os.path.join(shadow_dir, "*.json")):
+        m = _CAPTURE_FILENAME_RE.match(os.path.basename(cap_path))
+        if m:
+            captured_keys.add(f"{m.group('mod_func')}:{m.group('sid')}")
+
+    orphaned = []
+    for row in list_scenarios(baseline_dir):
+        sid = row["scenario_id"]
+        if not sid:
+            # _filename_to_scenario_id returns None for files whose names do not
+            # match _BASELINE_FILENAME_RE. Skip to avoid a downstream AttributeError.
+            continue
+        if sid not in captured_keys:
+            orphaned.append({"scenario_id": sid, "file": row["file"]})
+    return orphaned
+
+
 @baseline.command("deprecate")
-@click.argument("scenario_id")
-def baseline_deprecate(scenario_id):
-    """Mark a baseline scenario as deprecated."""
+@click.argument("scenario_id", required=False, default=None)
+@click.option(
+    "--orphaned",
+    is_flag=True,
+    default=False,
+    help="Deprecate all baseline scenarios that have no matching capture in shadow_data.",
+)
+@click.option(
+    "--apply",
+    is_flag=True,
+    default=False,
+    help="Actually apply deprecations (default is dry-run, which only lists candidates).",
+)
+def baseline_deprecate(scenario_id, orphaned, apply):
+    """Mark a baseline scenario as deprecated.
+
+    With --orphaned, finds all scenarios that have no matching capture in
+    shadow_data and deprecates them. Runs as dry-run by default; pass --apply
+    to commit the changes.
+    """
+    config = refresh_config()
+
+    if orphaned:
+        try:
+            candidates = _find_orphaned_scenarios(config.baseline_dir, config.shadow_dir)
+        except SSTError as exc:
+            click.echo(f"Error: {exc.explanation}")
+            sys.exit(2)
+
+        if not candidates:
+            click.echo("No orphaned scenarios found.")
+            return
+
+        if not apply:
+            click.echo(f"Dry-run: {len(candidates)} orphaned scenario(s) would be deprecated:")
+            for c in candidates:
+                click.echo(f"  {c['scenario_id']}")
+            click.echo("Re-run with --apply to commit.")
+            return
+
+        deprecated_count = 0
+        for c in candidates:
+            try:
+                path = find_scenario_file(config.baseline_dir, c["scenario_id"])
+                deprecate_scenario(path)
+                click.echo(f"Deprecated {c['scenario_id']}")
+                deprecated_count += 1
+            except SSTError as exc:
+                click.echo(f"Warning: could not deprecate {c['scenario_id']}: {exc.explanation}")
+
+        click.echo(f"Done: {deprecated_count} scenario(s) deprecated.")
+        return
+
+    # Original single-scenario path
+    if not scenario_id:
+        click.echo("Error: provide a SCENARIO_ID or use --orphaned.")
+        sys.exit(2)
+
     try:
-        path = find_scenario_file(refresh_config().baseline_dir, scenario_id)
+        path = find_scenario_file(config.baseline_dir, scenario_id)
     except SSTError as exc:
         click.echo(f"Error: {exc}")
         sys.exit(2)

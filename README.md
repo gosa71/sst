@@ -361,6 +361,8 @@ Every baseline scenario has a lifecycle: `pending → approved → deprecated`.
 sst baseline list                          # show all scenarios and status
 sst baseline show pricing.calculate_price  # inspect a specific scenario
 sst baseline deprecate pricing.fn:<id>     # retire an obsolete scenario
+sst baseline deprecate --orphaned          # dry-run: list scenarios with no capture match
+sst baseline deprecate --orphaned --apply  # deprecate all orphaned scenarios
 sst approve pricing.fn:<id>               # promote pending → approved
 ```
 
