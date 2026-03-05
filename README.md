@@ -303,6 +303,17 @@ Built-in patterns cover email, credit card, phone, SSN, IPv4.
 Key-based masking covers `password`, `token`, `api_key`, `secret`,
 `credential`, `auth`.
 
+By default SST uses **exact** key matching (`strict_pii_matching = true`):
+`password` is masked, but `user_password` and `access_token` are not.
+Set `strict_pii_matching = false` to switch to substring matching, where
+any key that *contains* a sensitive word is masked:
+
+```toml
+# pyproject.toml
+[tool.sst]
+strict_pii_matching = false   # masks user_password, access_token, my_api_key
+```
+
 ```python
 @sst.capture
 def process_payment(user: dict, amount: float) -> dict:
