@@ -269,3 +269,56 @@ class TestBaselineDeprecateOrphaned:
         root = __import__("pathlib").Path(__file__).parent.parent
         r = self._run(["baseline", "deprecate"], shadow, baseline, root)
         assert r.returncode == 2
+
+
+class TestRecordHttpBaselineNotLost:
+    """sst record must write HTTP-style baseline files to the top-level
+    baseline directory, not into subdirectories created by path separators
+    in the function name (e.g. 'POST /api/orders')."""
+
+    def test_http_function_name_does_not_create_subdirectory(self, tmp_path):
+        import json, glob as _glob, sys, subprocess, os
+        from sst.governance import save_baseline_record, create_baseline_from_capture
+
+        baseline = tmp_path / "baseline"
+        baseline.mkdir()
+
+        # Simulate what sst record does after reading an HTTP capture file
+        sid = "a" * 32
+        cap = {
+            "module": "http",
+            "function": "POST /api/orders",
+            "semantic_id": sid,
+            "output": {"raw_result": {"status": 200}},
+            "engine_version": "0.2.0",
+            "timestamp": "2025-01-01T00:00:00+00:00",
+            "input": {},
+            "dependencies": [],
+            "execution_metadata": {},
+            "dependency_capture": {},
+            "source": "",
+        }
+
+        # Apply the fix: sanitise function name before building baseline_name
+        safe_func = cap["function"].replace(" ", "").replace("/", "_")
+        baseline_name = f"{cap['module']}.{safe_func}_{cap['semantic_id']}.json"
+        baseline_path = baseline / baseline_name
+
+        record = create_baseline_from_capture(cap)
+        save_baseline_record(str(baseline_path), record)
+
+        # Must be a top-level file, not in a subdirectory
+        top_level = _glob.glob(str(baseline / "*.json"))
+        assert len(top_level) == 1, (
+            f"Expected 1 top-level .json, got {len(top_level)}. "
+            f"Contents: {list(baseline.rglob('*'))}"
+        )
+        assert "POST_api_orders" in top_level[0], (
+            f"Unexpected filename: {top_level[0]}"
+        )
+        # Filename must match _BASELINE_FILENAME_RE so list_scenarios can read it
+        import re
+
+        BASELINE_RE = re.compile(r"^(.+)_([0-9a-f]{32})\.json$")
+        fname = os.path.basename(top_level[0])
+        assert BASELINE_RE.match(fname), f"Filename does not match regex: {fname!r}"

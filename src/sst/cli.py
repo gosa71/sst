@@ -139,7 +139,8 @@ def record(app_script, clean):
             continue
 
         try:
-            baseline_name = f"{capture_data['module']}.{capture_data['function']}_{capture_data['semantic_id']}.json"
+            safe_func = capture_data['function'].replace(' ', '').replace('/', '_')
+            baseline_name = f"{capture_data['module']}.{safe_func}_{capture_data['semantic_id']}.json"
             baseline_record = create_baseline_from_capture(capture_data)
             save_baseline_record(os.path.join(config.baseline_dir, baseline_name), baseline_record)
             saved_count += 1
