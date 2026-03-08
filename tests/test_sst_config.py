@@ -79,3 +79,19 @@ def test_config_loads_new_polish_flags_from_pyproject(tmp_path, monkeypatch):
 
     assert cfg.clean_shadow_on_record is True
     assert cfg.strict_pii_matching is False
+
+
+def test_refresh_config_picks_up_env_change(monkeypatch, tmp_path):
+    from sst.config import get_config, load_config, refresh_config
+
+    load_config.cache_clear()
+    monkeypatch.setenv("SST_BASELINE_DIR", str(tmp_path / "v1"))
+    c1 = get_config()
+    assert "v1" in c1.baseline_dir
+
+    monkeypatch.setenv("SST_BASELINE_DIR", str(tmp_path / "v2"))
+    c2_cached = get_config()
+    assert "v1" in c2_cached.baseline_dir
+
+    c2_fresh = refresh_config()
+    assert "v2" in c2_fresh.baseline_dir
