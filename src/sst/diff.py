@@ -221,6 +221,35 @@ def build_structured_diff(baseline: Any, current: Any, path: str = "$", depth: i
 
     changes: List[DiffChange] = []
 
+    # bool is a subclass of int; avoid reporting type_changed for bool<->int comparisons.
+    if isinstance(baseline, bool) and isinstance(current, int) and not isinstance(current, bool):
+        if baseline == current:
+            return changes
+        changes.append(
+            {
+                "path": path,
+                "change_type": "value_changed",
+                "severity": _severity("value_changed"),
+                "baseline": baseline,
+                "current": current,
+            }
+        )
+        return changes
+
+    if isinstance(current, bool) and isinstance(baseline, int) and not isinstance(baseline, bool):
+        if baseline == current:
+            return changes
+        changes.append(
+            {
+                "path": path,
+                "change_type": "value_changed",
+                "severity": _severity("value_changed"),
+                "baseline": baseline,
+                "current": current,
+            }
+        )
+        return changes
+
     if type(baseline) is not type(current):
         changes.append(
             {
@@ -267,9 +296,35 @@ def build_structured_diff(baseline: Any, current: Any, path: str = "$", depth: i
         return changes
 
     if isinstance(baseline, list):
+        # Compare intersecting indexes first.
         for index in range(min(len(baseline), len(current))):
             changes.extend(build_structured_diff(baseline[index], current[index], f"{path}[{index}]", depth + 1))
 
+        # Removed elements when baseline list is longer.
+        for index in range(len(current), len(baseline)):
+            changes.append(
+                {
+                    "path": f"{path}[{index}]",
+                    "change_type": "removed",
+                    "severity": _severity("removed"),
+                    "baseline": baseline[index],
+                    "current": None,
+                }
+            )
+
+        # Added elements when current list is longer.
+        for index in range(len(baseline), len(current)):
+            changes.append(
+                {
+                    "path": f"{path}[{index}]",
+                    "change_type": "added",
+                    "severity": _severity("added"),
+                    "baseline": None,
+                    "current": current[index],
+                }
+            )
+
+        # Keep length_changed for backward compatibility.
         if len(baseline) != len(current):
             changes.append(
                 {
