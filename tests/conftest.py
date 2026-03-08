@@ -23,3 +23,13 @@ def clear_sst_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("PYTHONHASHSEED", "0")
     os.environ.setdefault("PYTHONHASHSEED", "0")
+
+
+@pytest.fixture(autouse=True)
+def reset_config_cache():
+    """Reset cached config before and after each test."""
+    from sst.config import load_config
+
+    load_config.cache_clear()
+    yield
+    load_config.cache_clear()

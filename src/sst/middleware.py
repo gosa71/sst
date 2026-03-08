@@ -33,6 +33,14 @@ from . import __version__
 
 logger = logging.getLogger(__name__)
 
+_STREAMING_CONTENT_TYPES = frozenset(
+    {
+        "text/event-stream",
+        "application/x-ndjson",
+        "application/octet-stream",
+    }
+)
+
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.requests import Request
@@ -69,6 +77,14 @@ class SSTMiddleware(BaseHTTPMiddleware):
     silently swallowed, resulting in captures never being written.
     CapturePayload is a stable public dataclass in sst.types and safe to
     construct directly.
+
+    Limitations:
+        - Streaming responses (text/event-stream, application/x-ndjson,
+          application/octet-stream) are NOT captured. SST detects them by
+          Content-Type and passes through without buffering.
+        - Request body is buffered via request.body(). Endpoints reading the
+          body via request.stream() may conflict with BaseHTTPMiddleware.
+          See: https://www.starlette.io/middleware/#limitations
     """
 
     def __init__(
@@ -189,6 +205,18 @@ class SSTMiddleware(BaseHTTPMiddleware):
         masked_inputs = self._core._mask_pii(self._core._serialize(raw_inputs))
 
         response: Response = await call_next(request)
+
+        resp_content_type = (
+            response.headers.get("content-type", "").split(";")[0].strip().lower()
+        )
+        if resp_content_type in _STREAMING_CONTENT_TYPES:
+            logger.warning(
+                "SST: Skipping capture for %s %s — streaming response (%s) not supported.",
+                request.method,
+                request.url.path,
+                resp_content_type,
+            )
+            return response
 
         response_body = b""
         async for chunk in response.body_iterator:

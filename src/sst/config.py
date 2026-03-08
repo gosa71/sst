@@ -191,6 +191,13 @@ def load_config(start_dir: str | os.PathLike[str] | None = None) -> Config:
 
 
 def get_config() -> Config:
+    """Return the current SST config, loading from pyproject.toml if needed.
+
+    Uses lru_cache — call refresh_config() to invalidate after changing
+    environment variables or pyproject.toml in tests:
+        monkeypatch.setenv("SST_BASELINE_DIR", str(tmp_path))
+        refresh_config()
+    """
     return load_config(os.getcwd())
 
 
