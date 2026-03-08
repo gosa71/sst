@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 import click
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 _CAPTURE_FILENAME_RE = re.compile(r"^(?P<mod_func>.+)_(?P<sid>[0-9a-f]{32})_\d{6}_\d+\.json$")
 _MAX_OUTPUT_BYTES = 4096
+MAX_CAPTURE_AGE_SECONDS = 60 * 60  # 1 hour
 
 
 
@@ -357,28 +359,62 @@ def _parse_approval_target(identifier: str, semantic_id: str | None) -> tuple[st
     return func_path, scenario_id
 
 
+def _find_recent_capture(shadow_dir: str, func_path: str, semantic_id: str) -> str | None:
+    """Find newest capture and ensure it is not older than max allowed age."""
+    pattern = os.path.join(shadow_dir, f"{func_path}_{semantic_id}_*.json")
+    files = sorted(glob.glob(pattern), reverse=True)
+    if not files:
+        return None
+    newest = files[0]
+    max_age = int(os.getenv("SST_MAX_CAPTURE_AGE_SECONDS", MAX_CAPTURE_AGE_SECONDS))
+    if time.time() - os.path.getmtime(newest) > max_age:
+        return None
+    return newest
+
+
 @main.command()
 @click.argument("identifier")
 @click.argument("semantic_id", required=False)
-def approve(identifier, semantic_id):
+@click.option("--force", is_flag=True, help="Use capture even if it is older than 1 hour.")
+def approve(identifier, semantic_id, force):
     """Approve an intentional change in behavior."""
     func_path, semantic_id = _parse_approval_target(identifier, semantic_id)
     func_path = func_path.replace(" ", "").replace("/", "_")
     config = refresh_config()
-    pattern = os.path.join(config.shadow_dir, f"{func_path}_{semantic_id}_*.json")
-    files = sorted(glob.glob(pattern), reverse=True)
+    capture_file = _find_recent_capture(config.shadow_dir, func_path, semantic_id)
 
-    if not files:
-        click.echo(f"Error: No recent capture found for {func_path} with ID {semantic_id}")
-        return
+    if capture_file is None:
+        pattern = os.path.join(config.shadow_dir, f"{func_path}_{semantic_id}_*.json")
+        old_files = sorted(glob.glob(pattern), reverse=True)
 
-    with open(files[0], "r", encoding="utf-8") as handle:
+        if old_files and not force:
+            age_min = int((time.time() - os.path.getmtime(old_files[0])) / 60)
+            click.echo(
+                f"Error: Most recent capture for '{func_path}:{semantic_id}' "
+                f"is {age_min} minutes old.\n"
+                "Run 'sst verify <app>' first, then approve.\n"
+                "Or use --force to approve from the existing capture."
+            )
+            sys.exit(2)
+        if old_files and force:
+            capture_file = old_files[0]
+            age_min = int((time.time() - os.path.getmtime(capture_file)) / 60)
+            click.echo(f"Warning: Using capture that is {age_min} minutes old (--force).")
+        else:
+            click.echo(
+                f"Error: No capture found for '{func_path}:{semantic_id}'.\n"
+                "Run 'sst verify <app>' first.\n"
+                "Hint: module is '__main__' when running scripts directly."
+            )
+            sys.exit(2)
+
+    with open(capture_file, "r", encoding="utf-8") as handle:
         capture_data = json.load(handle)
 
     os.makedirs(config.baseline_dir, exist_ok=True)
     baseline_path = os.path.join(config.baseline_dir, f"{func_path}_{semantic_id}.json")
     approve_scenario(baseline_path, capture_data)
-    click.echo(f"Approved change for {func_path} ({semantic_id}). Baseline updated.")
+    click.echo(f"Approved: {func_path}:{semantic_id}. Baseline updated.")
 
 
 @main.group()

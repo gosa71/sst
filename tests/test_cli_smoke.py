@@ -98,6 +98,45 @@ def test_cli_record_verify_approve_and_diff_contract(tmp_path):
     assert "No such command 'diff'" in (diff_result.stderr + diff_result.stdout)
 
 
+class TestApproveAfterClean:
+    def test_approve_fails_gracefully_when_no_captures(self, tmp_path):
+        """approve without captures exits 2 and suggests verify."""
+        env = os.environ.copy()
+        env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+        env["PYTHONHASHSEED"] = "0"
+        (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+        result = _run_cli(["approve", f"__main__.fn:{'a' * 32}"], cwd=tmp_path, env=env)
+        assert result.returncode == 2
+        assert "verify" in (result.stdout + result.stderr).lower()
+
+    def test_approve_rejects_stale_without_force(self, tmp_path, monkeypatch):
+        """Stale capture without --force exits 2 and hints to use force."""
+        monkeypatch.setenv("SST_MAX_CAPTURE_AGE_SECONDS", "0")
+        (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+        shadow = tmp_path / ".shadow_data"
+        shadow.mkdir()
+        sid = "a" * 32
+        cap = {
+            "function": "fn",
+            "module": "__main__",
+            "semantic_id": sid,
+            "input": {},
+            "output": {"raw_result": 1, "status": "success"},
+            "engine_version": "0.2.0",
+            "timestamp": "2025-01-01T00:00:00+00:00",
+            "dependencies": [],
+            "execution_metadata": {},
+            "dependency_capture": {},
+            "source": "",
+        }
+        (shadow / f"__main__.fn_{sid}_120000_1.json").write_text(json.dumps(cap), encoding="utf-8")
+        env = {**os.environ, "PYTHONHASHSEED": "0", "SST_MAX_CAPTURE_AGE_SECONDS": "0"}
+        env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+        result = _run_cli(["approve", f"__main__.fn:{sid}"], cwd=tmp_path, env=env)
+        assert result.returncode == 2
+        assert "force" in (result.stdout + result.stderr).lower()
+
+
 class TestBaselineDeprecateOrphaned:
     """Tests for `sst baseline deprecate --orphaned`."""
 
