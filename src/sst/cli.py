@@ -363,6 +363,7 @@ def _parse_approval_target(identifier: str, semantic_id: str | None) -> tuple[st
 def approve(identifier, semantic_id):
     """Approve an intentional change in behavior."""
     func_path, semantic_id = _parse_approval_target(identifier, semantic_id)
+    func_path = func_path.replace(" ", "").replace("/", "_")
     config = refresh_config()
     pattern = os.path.join(config.shadow_dir, f"{func_path}_{semantic_id}_*.json")
     files = sorted(glob.glob(pattern), reverse=True)
