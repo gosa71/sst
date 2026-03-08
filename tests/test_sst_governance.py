@@ -10,6 +10,7 @@ from sst.governance import (
     create_baseline_from_capture,
     deprecate_scenario,
     evaluate_governance_decision,
+    list_scenarios,
     load_baseline_record,
     set_custom_transition_validator,
 )
@@ -126,3 +127,60 @@ def test_strict_governance_mode_can_be_disabled(monkeypatch):
     assert decision.allowed is True
     assert decision.reason_code == "STRICT_GOVERNANCE_DISABLED"
     refresh_config()
+
+
+def test_list_scenarios_skips_corrupted_file(tmp_path):
+    good = create_baseline_from_capture(
+        {
+            "module": "m",
+            "function": "fn",
+            "semantic_id": "a" * 32,
+            "input": {},
+            "output": {"raw_result": 1},
+        }
+    )
+    save_path = tmp_path / f"m.fn_{'a' * 32}.json"
+    save_path.write_text(json.dumps(good), encoding="utf-8")
+    (tmp_path / f"bad_{'b' * 32}.json").write_text("{bad json", encoding="utf-8")
+
+    rows = list_scenarios(str(tmp_path))
+    real_rows = [r for r in rows if r["scenario_id"] is not None]
+    warn_rows = [r for r in rows if r.get("_warning")]
+    assert len(real_rows) == 1
+    assert len(warn_rows) == 1
+
+
+def test_list_scenarios_all_corrupted_returns_warnings(tmp_path):
+    (tmp_path / f"bad1_{'a' * 32}.json").write_text("{", encoding="utf-8")
+    (tmp_path / f"bad2_{'b' * 32}.json").write_text("null", encoding="utf-8")
+
+    rows = list_scenarios(str(tmp_path))
+    assert [r for r in rows if r["scenario_id"] is not None] == []
+    assert len([r for r in rows if r.get("_warning")]) == 2
+
+
+def test_deprecate_updates_version_id(tmp_path):
+    cap = {"module": "m", "function": "fn", "semantic_id": "a" * 32, "input": {}, "output": {"raw_result": 1}}
+    record = create_baseline_from_capture(cap)
+    record["metadata"]["scenario_status"] = "approved"
+    path = tmp_path / f"m.fn_{'a' * 32}.json"
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    original_vid = record["metadata"]["version_id"]
+    updated = deprecate_scenario(str(path))
+
+    assert updated["metadata"]["version_id"] != original_vid
+    assert updated["metadata"]["scenario_status"] == "deprecated"
+
+
+def test_deprecate_version_id_is_uuid(tmp_path):
+    import uuid
+
+    cap = {"module": "m", "function": "fn", "semantic_id": "b" * 32, "input": {}, "output": {"raw_result": 2}}
+    record = create_baseline_from_capture(cap)
+    record["metadata"]["scenario_status"] = "approved"
+    path = tmp_path / f"m.fn_{'b' * 32}.json"
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    updated = deprecate_scenario(str(path))
+    uuid.UUID(updated["metadata"]["version_id"])
