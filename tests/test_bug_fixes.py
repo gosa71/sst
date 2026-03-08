@@ -145,3 +145,25 @@ class TestRecordSavedCount:
 
         assert saved_count == 3, f"Expected 3 saved, got {saved_count}"
         assert len(list(baseline.glob("*.json"))) == 3
+
+
+class TestApproveMessageFormat:
+    def test_regression_error_approve_command_uses_colon(self):
+        """RegressionDetectedError содержит двоеточие, не пробел."""
+        from sst.errors import RegressionDetectedError
+
+        err = RegressionDetectedError(
+            message="sst approve mod.fn:abc123",
+            scenario_id="mod.fn:abc123",
+        )
+        assert "mod.fn:abc123" in str(err.message)
+        assert "mod.fn abc123" not in str(err.message)
+
+
+class TestLegacyUrl:
+    def test_legacy_url_is_not_placeholder(self):
+        import pathlib
+
+        src = pathlib.Path("src/sst/legacy.py").read_text()
+        assert "your-org" not in src
+        assert "gosa71" in src

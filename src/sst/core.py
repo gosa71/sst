@@ -263,7 +263,7 @@ class SSTCore:
             error_msg += "Summary:\n" + self._explain_regression(structured_diff) + "\n\n"
             error_msg += "Human-readable diff:\n" + format_human_diff(structured_diff) + "\n\n"
             error_msg += "Structured diff:\n" + json.dumps(structured_diff, indent=2, sort_keys=True)
-            error_msg += f"\nTo approve this change, run: sst approve {func.__module__}.{func.__name__} {semantic_id}"
+            error_msg += f"\nTo approve this change, run: sst approve {func.__module__}.{func.__name__}:{semantic_id}"
             scenario_id = f"{func.__module__}.{func.__name__}:{semantic_id}"
             raise RegressionDetectedError(message=error_msg, scenario_id=scenario_id)
 

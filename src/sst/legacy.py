@@ -20,7 +20,7 @@ class ShadowCapture:
             "incompatible with the SST pipeline (missing semantic_id, "
             "non-JSON-serializable inputs via repr()). "
             "Migrate to @sst.capture from sst.core — it is a drop-in decorator "
-            "replacement. See https://github.com/your-org/sst for migration guide.",
+            "replacement. See https://github.com/gosa71/sst for migration guide.",
             DeprecationWarning,
             stacklevel=2,
         )
