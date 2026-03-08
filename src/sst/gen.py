@@ -81,9 +81,9 @@ class SSTGen:
                 raw_result = output_data.get("raw_result", {})
                 lines.append(f"    def test_returns_expected_structure(self):")
                 lines.append(f"        # TODO: reconstruct input args from captured data")
-                lines.append(f"        # Input: {json.dumps(input_data)}")
+                lines.append(f"        # Input: {json.dumps(input_data)[:120]}")
                 lines.append(f"        # Expected keys in result: {list(raw_result.keys()) if isinstance(raw_result, dict) else 'N/A'}")
-                lines.append(f"        pass")
+                lines.append(f"        pytest.skip('SST stub — fill in test logic')")
                 lines.append("")
 
                 if isinstance(raw_result, dict):
@@ -92,7 +92,7 @@ class SSTGen:
                     lines.append(f"        expected_keys = {list(raw_result.keys())}")
                     lines.append(f"        # result = {func_name}(...)")
                     lines.append(f"        # assert set(result.keys()) == set(expected_keys)")
-                    lines.append(f"        pass")
+                    lines.append(f"        pytest.skip('SST stub — fill in test logic')")
                     lines.append("")
 
             elif status == "failure":
@@ -101,14 +101,14 @@ class SSTGen:
                 lines.append(f"        # This scenario raised {error_type}: {output_data.get('error', '')}")
                 lines.append(f"        # with pytest.raises({error_type}):")
                 lines.append(f"        #     {func_name}(...)")
-                lines.append(f"        pass")
+                lines.append(f"        pytest.skip('SST stub — fill in test logic')")
                 lines.append("")
 
             lines.append("")
 
         return "\n".join(lines)
 
-    def run(self, func_filter=None):
+    def run(self, func_filter=None, strict=False):
         captures = self._load_captures(func_filter)
         if not captures:
             logger.info("No captures found.")

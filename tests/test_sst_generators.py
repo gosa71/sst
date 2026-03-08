@@ -255,3 +255,59 @@ class TestSSTSynthesizer:
         captures = s._load_captures()
         assert len(captures) == 1
         assert captures[0]["function"] == "fn"
+
+
+def test_strip_markdown_fence_python():
+    from sst.synthesizer import SSTSynthesizer
+
+    result = SSTSynthesizer._strip_markdown_fence("```python\nimport pytest\n```")
+    assert result == "import pytest"
+    assert "```" not in result
+
+
+def test_strip_markdown_fence_Python_capital():
+    from sst.synthesizer import SSTSynthesizer
+
+    assert SSTSynthesizer._strip_markdown_fence("```Python\ncode\n```") == "code"
+
+
+def test_strip_markdown_fence_no_fence():
+    from sst.synthesizer import SSTSynthesizer
+
+    content = "import pytest\ndef test_fn(): pass"
+    assert SSTSynthesizer._strip_markdown_fence(content) == content
+
+
+def test_strip_markdown_fence_text_before_block():
+    from sst.synthesizer import SSTSynthesizer
+
+    content = "Here is the test:\n```python\nimport pytest\n```"
+    result = SSTSynthesizer._strip_markdown_fence(content)
+    assert "import pytest" in result
+    assert "Here is the test" not in result
+
+
+def test_gen_uses_pytest_skip_not_pass(tmp_path):
+    """SSTGen генерирует pytest.skip вместо pass."""
+    import json
+
+    from sst.gen import SSTGen
+
+    cap = {
+        "function": "fn",
+        "module": "mod",
+        "semantic_id": "a" * 32,
+        "input": {"args": [], "kwargs": {}},
+        "output": {"status": "success", "raw_result": 1},
+        "source": "def fn(): return 1",
+        "dependencies": [],
+        "execution_metadata": {},
+    }
+    (tmp_path / f"mod.fn_{'a' * 32}_1.json").write_text(json.dumps(cap))
+    gen = SSTGen(shadow_dir=str(tmp_path), output_dir=str(tmp_path))
+    gen.run()
+    files = list(tmp_path.glob("test_*.py"))
+    assert files
+    content = files[0].read_text()
+    assert "pytest.skip" in content
+    assert "        pass" not in content

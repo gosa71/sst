@@ -157,6 +157,31 @@ The output must be syntactically valid Python that passes `python -m py_compile`
         raise ValueError(f"Unknown provider: {self.provider}")
 
 
+    @staticmethod
+    def _strip_markdown_fence(content: str) -> str:
+        """Извлечь Python-код из markdown code fence.
+
+        Обрабатывает: ```python, ```Python, ```py, текст перед блоком.
+        Если fence не найден — возвращает content как есть.
+        """
+        import re
+
+        fence_match = re.search(
+            r"```(?:python|Python|py)\n(.*?)```",
+            content,
+            re.DOTALL,
+        )
+        if fence_match:
+            return fence_match.group(1).strip()
+        if content.startswith("```"):
+            lines = content.split("\n", 1)
+            if len(lines) > 1:
+                body = lines[1]
+                if body.endswith("```"):
+                    body = body[:-3]
+                return body.strip()
+        return content.strip()
+
     def _call_local_llm(self, prompt):
         from openai import OpenAI
 
@@ -180,10 +205,7 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             max_tokens=4096,
         )
         content = response.choices[0].message.content
-        if content.startswith("```python"):
-            content = content[len("```python"):].strip()
-        if content.endswith("```"):
-            content = content[:-3].strip()
+        content = self._strip_markdown_fence(content)
         return content
 
     def _call_openai(self, prompt):
@@ -199,10 +221,7 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             max_tokens=4096,
         )
         content = response.choices[0].message.content
-        if content.startswith("```python"):
-            content = content[len("```python"):].strip()
-        if content.endswith("```"):
-            content = content[:-3].strip()
+        content = self._strip_markdown_fence(content)
         return content
 
     def _call_anthropic(self, prompt):
@@ -216,10 +235,7 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             ]
         )
         content = response.content[0].text
-        if content.startswith("```python"):
-            content = content[len("```python"):].strip()
-        if content.endswith("```"):
-            content = content[:-3].strip()
+        content = self._strip_markdown_fence(content)
         return content
 
     def run(self, func_filter=None, output_dir="tests/", open_editor=False):
