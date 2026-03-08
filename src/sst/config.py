@@ -35,6 +35,7 @@ class Config:
     clean_shadow_on_record: bool = False
     strict_pii_matching: bool = True
     verify_timeout: int = 300
+    max_capture_age_seconds: int = 3600
 
 
 _ENV_PREFIX = "SST_"
@@ -148,6 +149,10 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         os.getenv(f"{_ENV_PREFIX}STRICT_PII_MATCHING", raw.get("strict_pii_matching", True)), True
     )
     verify_timeout = _to_int(os.getenv(f"{_ENV_PREFIX}VERIFY_TIMEOUT", raw.get("verify_timeout", 300)), 300)
+    max_capture_age_seconds = _to_int(
+        os.getenv("SST_MAX_CAPTURE_AGE_SECONDS", raw.get("max_capture_age_seconds", 3600)),
+        3600,
+    )
 
     env_ignored = os.getenv(f"{_ENV_PREFIX}DIFF_IGNORED_FIELDS")
     if env_ignored is not None:
@@ -174,6 +179,7 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         clean_shadow_on_record=clean_shadow_on_record,
         strict_pii_matching=strict_pii_matching,
         verify_timeout=max(1, verify_timeout),
+        max_capture_age_seconds=max(1, max_capture_age_seconds),
     )
 
 
