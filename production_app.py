@@ -1,6 +1,6 @@
 import os
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from sst.core import sst
 
 # Simulate a complex domain model
@@ -40,7 +40,7 @@ def calculate_loyalty_points(user_data, order_details):
     return {
         "user": email,
         "points_earned": points,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "transaction_id": f"TXN-{random.randint(1000, 9999)}"
     }
 
