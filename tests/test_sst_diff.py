@@ -136,3 +136,63 @@ def test_normalize_for_compare_caps_recursion_depth():
     for _ in range(100):
         cursor = cursor["x"]
     assert cursor["x"] == "[MAX_DEPTH_REACHED]"
+
+
+class TestListDiff:
+    def test_added_element_appears_in_changes(self):
+        changes = build_structured_diff([1, 2], [1, 2, 3])
+
+        types = {c["change_type"] for c in changes}
+        assert "added" in types
+        added = [c for c in changes if c["change_type"] == "added"]
+        assert len(added) == 1
+        assert added[0]["current"] == 3
+        assert added[0]["path"] == "$[2]"
+
+    def test_removed_element_appears_in_changes(self):
+        changes = build_structured_diff([1, 2, 3], [1, 2])
+
+        removed = [c for c in changes if c["change_type"] == "removed"]
+        assert len(removed) == 1
+        assert removed[0]["baseline"] == 3
+        assert removed[0]["path"] == "$[2]"
+
+    def test_length_changed_still_present(self):
+        changes = build_structured_diff([1], [1, 2])
+
+        assert "length_changed" in {c["change_type"] for c in changes}
+
+    def test_equal_lists_no_changes(self):
+        assert build_structured_diff([1, 2, 3], [1, 2, 3]) == []
+
+    def test_multiple_added_elements(self):
+        changes = build_structured_diff([], [10, 20, 30])
+
+        added = [c for c in changes if c["change_type"] == "added"]
+        assert len(added) == 3
+        assert {c["current"] for c in added} == {10, 20, 30}
+
+
+class TestBoolIntDiff:
+    def test_true_equals_1_no_type_changed(self):
+        changes = build_structured_diff(True, 1)
+
+        assert "type_changed" not in {c["change_type"] for c in changes}
+
+    def test_false_equals_0_no_type_changed(self):
+        assert build_structured_diff(False, 0) == []
+
+    def test_true_vs_0_is_value_changed(self):
+        changes = build_structured_diff(True, 0)
+
+        types = {c["change_type"] for c in changes}
+        assert "type_changed" not in types
+        assert "value_changed" in types
+
+    def test_true_vs_true_no_change(self):
+        assert build_structured_diff(True, True) == []
+
+    def test_int_vs_string_still_type_changed(self):
+        changes = build_structured_diff(1, "1")
+
+        assert "type_changed" in {c["change_type"] for c in changes}
