@@ -395,6 +395,9 @@ def baseline_list():
         return
     try:
         for row in list_scenarios(config.baseline_dir):
+            if row.get("_warning"):
+                click.echo(f"WARN: {row['_warning']}", err=True)
+                continue
             meta = row["metadata"]
             click.echo(f"{row['scenario_id']} status={meta['scenario_status']} version={meta['version_id']}")
     except SSTError as exc:
@@ -453,6 +456,9 @@ def _find_orphaned_scenarios(baseline_dir: str, shadow_dir: str) -> list[dict]:
 
     orphaned = []
     for row in list_scenarios(baseline_dir):
+        if row.get("_warning"):
+            click.echo(f"WARN: {row['_warning']}", err=True)
+            continue
         sid = row["scenario_id"]
         if not sid:
             # _filename_to_scenario_id returns None for files whose names do not

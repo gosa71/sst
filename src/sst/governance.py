@@ -8,6 +8,7 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import logging
 import os
 import re
 import uuid
@@ -27,6 +28,7 @@ SUPPORTED_BASELINE_VERSIONS = {1}
 STRICT_GOVERNANCE = True
 _CUSTOM_TRANSITION_VALIDATOR = None
 _BASELINE_FILENAME_RE = re.compile(r"^(.+)_([0-9a-f]{32})\.json$")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -272,15 +274,25 @@ def approve_scenario(path: str, capture_data: Dict[str, Any]) -> BaselineRecord:
 
 def list_scenarios(baseline_dir: str) -> List[Dict[str, Any]]:
     rows = []
+    warnings_list = []
     for path in sorted(glob.glob(os.path.join(baseline_dir, "*.json"))):
-        record = load_baseline_record(path)
+        try:
+            record = load_baseline_record(path)
+        except BaselineFormatError as exc:
+            warning = f"Skipping corrupted baseline file '{os.path.basename(path)}': {exc}"
+            warnings_list.append(warning)
+            logger.warning("SST: %s", warning)
+            continue
         rows.append(
             {
                 "scenario_id": _filename_to_scenario_id(os.path.basename(path)),
                 "file": os.path.basename(path),
                 "metadata": record["metadata"],
+                "_warning": None,
             }
         )
+    for warning in warnings_list:
+        rows.append({"scenario_id": None, "file": None, "metadata": {}, "_warning": warning})
     return rows
 
 
@@ -306,6 +318,7 @@ def deprecate_scenario(path: str) -> BaselineRecord:
     if not decision.allowed:
         raise BaselineFormatError(f"Cannot deprecate scenario: {decision.reason_code}: {decision.explanation}")
     record["metadata"]["scenario_status"] = "deprecated"
+    record["metadata"]["version_id"] = str(uuid.uuid4())
     record["approval_history"].append({"approved_at": utcnow_iso(), "action": "deprecate"})
     save_baseline_record(path, record)
     return record
