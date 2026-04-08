@@ -22,11 +22,15 @@ from datetime import datetime
 from typing import Any, Dict, List, Set
 
 from .config import get_config
+from .constants import MAX_DEPTH, MAX_DIFF_DEPTH
 from .errors import DiffContractError
 from .types import DiffChange
 
-MAX_DIFF_DEPTH = 1000
-MAX_DEPTH = 100
+
+# Deprecated: Use constants.MAX_DEPTH and constants.MAX_DIFF_DEPTH instead
+# Kept for backward compatibility only
+_DEPRECATED_MAX_DEPTH = MAX_DEPTH
+_DEPRECATED_MAX_DIFF_DEPTH = MAX_DIFF_DEPTH
 
 _ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 _UUID_RE = re.compile(

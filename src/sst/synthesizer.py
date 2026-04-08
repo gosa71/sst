@@ -3,9 +3,16 @@ import os
 import glob
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 from .config import get_config
+from .constants import (
+    LLM_MAX_RETRIES,
+    LLM_RETRY_BASE_DELAY,
+    LLM_RETRY_EXPONENTIAL_BASE,
+    LLM_RETRY_MAX_DELAY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,49 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             )
             return False
 
+    def _call_llm_with_retry(self, prompt: str) -> str:
+        """Call LLM with exponential backoff retry logic.
+        
+        Retries on rate limit errors (429) and transient failures.
+        Uses exponential backoff: delay = base * (2 ** attempt), capped at max_delay.
+        """
+        last_exception = None
+        
+        for attempt in range(LLM_MAX_RETRIES):
+            try:
+                return self._call_llm(prompt)
+            except Exception as exc:  # noqa: BLE001
+                last_exception = exc
+                # Check if it's a rate limit error
+                is_rate_limit = (
+                    hasattr(exc, "status_code") and getattr(exc, "status_code", None) == 429
+                    or "rate limit" in str(exc).lower()
+                    or "too many requests" in str(exc).lower()
+                )
+                
+                if not is_rate_limit and attempt < LLM_MAX_RETRIES - 1:
+                    # Only retry on rate limits or if we have more attempts
+                    logger.warning(
+                        "LLM call failed (attempt %d/%d): %s. Retrying...",
+                        attempt + 1,
+                        LLM_MAX_RETRIES,
+                        exc
+                    )
+                
+                if attempt < LLM_MAX_RETRIES - 1:
+                    # Calculate exponential backoff delay
+                    delay = min(
+                        LLM_RETRY_BASE_DELAY * (LLM_RETRY_EXPONENTIAL_BASE ** attempt),
+                        LLM_RETRY_MAX_DELAY
+                    )
+                    logger.info("Waiting %.1f seconds before retry...", delay)
+                    time.sleep(delay)
+        
+        # All retries exhausted
+        raise type(last_exception)(
+            f"LLM call failed after {LLM_MAX_RETRIES} attempts: {last_exception}"
+        ) from last_exception
+
     def _call_llm(self, prompt):
         if self.provider == "openai":
             return self._call_openai(prompt)
@@ -203,9 +253,9 @@ The output must be syntactically valid Python that passes `python -m py_compile`
             prompt = self._build_prompt(func_key, scenarios)
             
             try:
-                test_code = self._call_llm(prompt)
+                test_code = self._call_llm_with_retry(prompt)
             except Exception as e:
-                print(f"  LLM call failed: {e}")
+                print(f"  LLM call failed after retries: {e}")
                 print("  Generating fallback template...")
                 test_code = self._generate_fallback(func_key, scenarios)
 

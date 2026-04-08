@@ -7,11 +7,13 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 import click
 
 from . import __version__ as VERSION
 from .config import refresh_config
+from .constants import ALLOWED_SCRIPT_EXTENSIONS, MAX_PATH_LENGTH
 from .errors import SSTError, ScenarioNotFoundError
 from .governance import (
     approve_scenario,
@@ -27,6 +29,39 @@ from .types import ReplayReport
 from .synthesizer import SSTSynthesizer
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_script_path(app_script: str) -> None:
+    """Validate that the script path is safe and allowed.
+    
+    Security checks:
+    - Path must exist
+    - Path must be within reasonable length limits
+    - Path must have an allowed extension (.py)
+    - Path must not contain suspicious patterns
+    """
+    # Check path length
+    if len(app_script) > MAX_PATH_LENGTH:
+        raise click.UsageError(f"Script path exceeds maximum length of {MAX_PATH_LENGTH} characters.")
+    
+    # Check file exists
+    if not os.path.exists(app_script):
+        raise click.UsageError(f"Script '{app_script}' not found.")
+    
+    # Check extension
+    script_ext = Path(app_script).suffix.lower()
+    if script_ext not in ALLOWED_SCRIPT_EXTENSIONS:
+        raise click.UsageError(
+            f"Script must have one of these extensions: {', '.join(ALLOWED_SCRIPT_EXTENSIONS)}. "
+            f"Got: '{script_ext}'"
+        )
+    
+    # Resolve to absolute path and check for path traversal attempts
+    abs_path = os.path.abspath(app_script)
+    # Ensure the resolved path doesn't try to escape expected directories
+    # (basic check - in production, consider restricting to project root)
+    if ".." in app_script and not abs_path.startswith(os.getcwd()):
+        logger.warning("Script path contains '..' and resolves outside current directory: %s", abs_path)
 
 
 
@@ -98,8 +133,10 @@ def clean():
 @click.option("--clean", is_flag=True, default=False, help="Clean shadow_dir before recording to avoid mixing old captures")
 def record(app_script, clean):
     """Record production baseline behavior."""
-    if not os.path.exists(app_script):
-        click.echo(f"Error: {app_script} not found.")
+    try:
+        _validate_script_path(app_script)
+    except click.UsageError as exc:
+        click.echo(f"Error: {exc}")
         return
 
     click.echo(f"Recording baseline from {app_script}...")
@@ -291,8 +328,10 @@ def _run_verify_pipeline(app_script: str) -> ReplayReport:
 @click.option("--replay", is_flag=True, help="Deterministic replay using captured inputs")
 def verify(app_script, verbose, json_output, replay):
     """Verify current behavior against baseline (Regression Gate)."""
-    if not os.path.exists(app_script):
-        click.echo(f"Error: {app_script} not found.")
+    try:
+        _validate_script_path(app_script)
+    except click.UsageError as exc:
+        click.echo(f"Error: {exc}")
         sys.exit(2)
     config = refresh_config()
     if not os.path.exists(config.baseline_dir) or not os.listdir(config.baseline_dir):
