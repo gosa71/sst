@@ -16,6 +16,7 @@ from typing import Any, Dict, List
 
 from . import __version__
 from .config import get_config
+from .constants import MAX_DEPTH as GLOBAL_MAX_DEPTH
 from .diff import apply_diff_policy, build_structured_diff, format_human_diff, normalize_for_compare, summarize_changes
 from .errors import CaptureContractError, RegressionDetectedError
 from .governance import load_baseline_record
@@ -29,7 +30,7 @@ MAX_STRING_LENGTH_FOR_REGEX = 10000
 
 
 class _CaptureNormalizer:
-    MAX_DEPTH = 100
+    MAX_DEPTH = GLOBAL_MAX_DEPTH
 
     def __init__(self, extra_pii_keys=None, strict_pii_matching: bool = True, extra_pii_patterns=None):
         self.pii_patterns = {
@@ -117,7 +118,7 @@ class _CaptureNormalizer:
 
 
 class _Fingerprint:
-    MAX_DEPTH = 100
+    MAX_DEPTH = GLOBAL_MAX_DEPTH
 
     @staticmethod
     def semantic_hash(data: Any) -> str:
