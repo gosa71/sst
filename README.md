@@ -267,12 +267,21 @@ Requires Python 3.10+.
 ```
 Record once          →   Verify on every PR   →   Approve intentional changes
 sst record app.py        sst verify app.py        sst approve module.fn:<id>
+(same: sst rec app.py)   (same: sst ver app.py)   (same: sst ap module.fn:<id>)
       ↓                        ↓                          ↓
 .sst_baseline/          exit 0 or 1              baseline updated
 (commit to git)         (CI gate)                (auditable history)
 ```
 
 ---
+
+Short aliases are available for faster local use:
+
+```bash
+sst rec app.py                 # alias: record
+sst ver app.py                 # alias: verify
+sst ap module.fn:<id>          # alias: approve
+```
 
 ## What gets captured
 
