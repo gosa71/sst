@@ -34,7 +34,23 @@ logger = logging.getLogger(__name__)
 _CAPTURE_FILENAME_RE = re.compile(r"^(?P<mod_func>.+)_(?P<sid>[0-9a-f]{32})_\d{6}_\d+\.json$")
 _MAX_OUTPUT_BYTES = 4096
 MAX_CAPTURE_AGE_SECONDS = 60 * 60  # 1 hour
+_PII_WARNING_EMITTED = False
 
+
+def _pii_warning_enabled() -> bool:
+    return os.getenv("SST_QUIET_PII_WARNING", "").strip().lower() not in {"1", "true", "yes", "on"}
+
+
+def _emit_strict_pii_warning_if_needed() -> None:
+    global _PII_WARNING_EMITTED
+    cfg = refresh_config()
+    if cfg.strict_pii_matching and _pii_warning_enabled() and not _PII_WARNING_EMITTED:
+        click.echo(
+            "NOTE: strict_pii_matching=true uses exact key matching only. "
+            "Compound keys like 'user_password' and 'access_token' are not masked by key name. "
+            "Set strict_pii_matching=false for substring matching (or set SST_QUIET_PII_WARNING=1 to silence this note)."
+        )
+        _PII_WARNING_EMITTED = True
 
 
 @click.group(invoke_without_command=True)
@@ -100,7 +116,7 @@ def clean():
         click.echo("Nothing to clean.")
 
 
-@main.command()
+@main.command(short_help="Record baseline scenarios (alias: rec)")
 @click.argument("app_script")
 @click.option("--clean", is_flag=True, default=False, help="Clean shadow_dir before recording to avoid mixing old captures")
 def record(app_script, clean):
@@ -110,6 +126,7 @@ def record(app_script, clean):
         return
 
     click.echo(f"Recording baseline from {app_script}...")
+    _emit_strict_pii_warning_if_needed()
     config = refresh_config()
     os.makedirs(config.shadow_dir, exist_ok=True)
     if config.clean_shadow_on_record or clean:
@@ -153,6 +170,12 @@ def record(app_script, clean):
     if process_failed and not files:
         click.echo("Error: Script failed and no captures were saved.")
         return
+
+    if process_failed:
+        click.echo(
+            f"WARNING: PARTIAL BASELINE. Script failed during record; saved {saved_count} scenario(s). "
+            "Review baseline contents before committing."
+        )
 
     click.echo(f"Baseline recorded: {saved_count} scenarios saved to {config.baseline_dir}/")
 
@@ -215,6 +238,13 @@ def _print_verify_report(report: ReplayReport, verbose: bool = False, as_json: b
     click.echo("-----------------------")
     click.echo(f"Scenarios checked: {report['baseline_count']}")
     click.echo(f"Regressions: {len(report['regressions']) + len(report['missing'])}")
+    if report["capture_count"] < report["baseline_count"]:
+        click.echo(
+            f"WARNING: Replay captured {report['capture_count']}/{report['baseline_count']} baseline scenario(s)."
+        )
+        click.echo(
+            "Coverage gap detected: ensure replay inputs are complete and middleware sampling is 1.0 during verify."
+        )
     click.echo()
 
     for warning in report.get("warnings", []):
@@ -317,7 +347,7 @@ def _run_verify_pipeline(app_script: str) -> ReplayReport:
         return engine.replay()
 
 
-@main.command()
+@main.command(short_help="Verify against baseline (alias: ver)")
 @click.argument("app_script")
 @click.option("--verbose", is_flag=True, help="Show field-level diff details")
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable diff report")
@@ -347,6 +377,25 @@ def verify(app_script, verbose, json_output):
         _emit_structured_error(str(exc), code="INTERNAL", category="SYSTEM", as_json=json_output, exit_code=2)
 
 
+@main.command(name="rec", short_help="Short alias for record")
+@click.argument("app_script")
+@click.option("--clean", is_flag=True, default=False, help="Clean shadow_dir before recording to avoid mixing old captures")
+@click.pass_context
+def record_alias(ctx, app_script, clean):
+    """Alias for `record`."""
+    ctx.invoke(record, app_script=app_script, clean=clean)
+
+
+@main.command(name="ver", short_help="Short alias for verify")
+@click.argument("app_script")
+@click.option("--verbose", is_flag=True, help="Show field-level diff details")
+@click.option("--json", "json_output", is_flag=True, help="Emit machine-readable diff report")
+@click.pass_context
+def verify_alias(ctx, app_script, verbose, json_output):
+    """Alias for `verify`."""
+    ctx.invoke(verify, app_script=app_script, verbose=verbose, json_output=json_output)
+
+
 def _parse_approval_target(identifier: str, semantic_id: str | None) -> tuple[str, str]:
     """Support both legacy and scenario-id approve command formats."""
     if semantic_id:
@@ -372,7 +421,7 @@ def _find_recent_capture(shadow_dir: str, func_path: str, semantic_id: str) -> s
     return newest
 
 
-@main.command()
+@main.command(short_help="Approve intentional behavior change (alias: ap)")
 @click.argument("identifier")
 @click.argument("semantic_id", required=False)
 @click.option("--force", is_flag=True, help="Use capture even if it is older than 1 hour.")
@@ -415,6 +464,16 @@ def approve(identifier, semantic_id, force):
     baseline_path = os.path.join(config.baseline_dir, f"{func_path}_{semantic_id}.json")
     approve_scenario(baseline_path, capture_data)
     click.echo(f"Approved: {func_path}:{semantic_id}. Baseline updated.")
+
+
+@main.command(name="ap", short_help="Short alias for approve")
+@click.argument("identifier")
+@click.argument("semantic_id", required=False)
+@click.option("--force", is_flag=True, help="Use capture even if it is older than 1 hour.")
+@click.pass_context
+def approve_alias(ctx, identifier, semantic_id, force):
+    """Alias for `approve`."""
+    ctx.invoke(approve, identifier=identifier, semantic_id=semantic_id, force=force)
 
 
 @main.group()

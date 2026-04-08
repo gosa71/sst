@@ -361,3 +361,67 @@ class TestRecordHttpBaselineNotLost:
         BASELINE_RE = re.compile(r"^(.+)_([0-9a-f]{32})\.json$")
         fname = os.path.basename(top_level[0])
         assert BASELINE_RE.match(fname), f"Filename does not match regex: {fname!r}"
+
+
+def test_cli_short_aliases_work(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+    app_script = tmp_path / "app.py"
+    _write_app(app_script, value=1)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+    env["PYTHONHASHSEED"] = "0"
+
+    record_result = _run_cli(["rec", str(app_script), "--clean"], cwd=tmp_path, env=env)
+    assert record_result.returncode == 0, record_result.stderr
+    assert "Baseline recorded:" in record_result.stdout
+
+    verify_result = _run_cli(["ver", str(app_script)], cwd=tmp_path, env=env)
+    assert verify_result.returncode == 0, verify_result.stderr
+    assert "SST Verification Report" in verify_result.stdout
+
+    baseline_list = _run_cli(["baseline", "list"], cwd=tmp_path, env=env)
+    assert baseline_list.returncode == 0, baseline_list.stderr
+    assert "status=" in baseline_list.stdout
+
+
+def test_record_warns_on_strict_pii_mode(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+    app_script = tmp_path / "app.py"
+    _write_app(app_script, value=1)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+    env["PYTHONHASHSEED"] = "0"
+
+    result = _run_cli(["record", str(app_script), "--clean"], cwd=tmp_path, env=env)
+    assert result.returncode == 0, result.stderr
+    assert "strict_pii_matching=true uses exact key matching only" in result.stdout
+
+
+def test_record_strict_pii_warning_can_be_silenced(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+    app_script = tmp_path / "app.py"
+    _write_app(app_script, value=1)
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+    env["PYTHONHASHSEED"] = "0"
+    env["SST_QUIET_PII_WARNING"] = "1"
+
+    result = _run_cli(["record", str(app_script), "--clean"], cwd=tmp_path, env=env)
+    assert result.returncode == 0, result.stderr
+    assert "strict_pii_matching=true" not in result.stdout
+
+
+def test_cli_help_mentions_aliases_in_short_help(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.sst]\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"/workspace/sst/src:{env.get('PYTHONPATH', '')}"
+
+    result = _run_cli(["--help"], cwd=tmp_path, env=env)
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    assert "record baseline scenarios (alias: rec)".lower() in out.lower()
+    assert "verify against baseline (alias: ver)".lower() in out.lower()
+    assert "approve intentional behavior change (alias: ap)".lower() in out.lower()

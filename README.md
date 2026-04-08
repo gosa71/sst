@@ -267,12 +267,21 @@ Requires Python 3.10+.
 ```
 Record once          →   Verify on every PR   →   Approve intentional changes
 sst record app.py        sst verify app.py        sst approve module.fn:<id>
+(same: sst rec app.py)   (same: sst ver app.py)   (same: sst ap module.fn:<id>)
       ↓                        ↓                          ↓
 .sst_baseline/          exit 0 or 1              baseline updated
 (commit to git)         (CI gate)                (auditable history)
 ```
 
 ---
+
+Short aliases are available for faster local use:
+
+```bash
+sst rec app.py                 # alias: record
+sst ver app.py                 # alias: verify
+sst ap module.fn:<id>          # alias: approve
+```
 
 ## What gets captured
 
@@ -306,7 +315,9 @@ Key-based masking covers `password`, `token`, `api_key`, `secret`,
 By default SST uses **exact** key matching (`strict_pii_matching = true`):
 `password` is masked, but `user_password` and `access_token` are not.
 Set `strict_pii_matching = false` to switch to substring matching, where
-any key that *contains* a sensitive word is masked:
+any key that *contains* a sensitive word is masked.
+During `sst record`, SST prints a one-time strict-mode reminder by default;
+set `SST_QUIET_PII_WARNING=1` to silence it:
 
 ```toml
 # pyproject.toml
