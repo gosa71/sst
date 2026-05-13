@@ -206,25 +206,35 @@ class SSTMiddleware(BaseHTTPMiddleware):
 
         response: Response = await call_next(request)
 
-        try:
-            resp_content_type = (
-                response.headers.get("content-type", "").split(";")[0].strip().lower()
+        resp_content_type = (
+            response.headers.get("content-type", "").split(";")[0].strip().lower()
+        )
+        if resp_content_type in _STREAMING_CONTENT_TYPES:
+            logger.warning(
+                "SST: Skipping capture for %s %s — streaming response (%s) not supported.",
+                request.method,
+                request.url.path,
+                resp_content_type,
             )
-            if resp_content_type in _STREAMING_CONTENT_TYPES:
-                logger.warning(
-                    "SST: Skipping capture for %s %s — streaming response (%s) not supported.",
-                    request.method,
-                    request.url.path,
-                    resp_content_type,
-                )
-                return response
+            return response
 
-            response_body = b""
-            async for chunk in response.body_iterator:
-                if isinstance(chunk, str):
-                    chunk = chunk.encode("utf-8")
-                response_body += chunk
+        body_chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8")
+            body_chunks.append(chunk)
+        response_body = b"".join(body_chunks)
 
+        safe_response = Response(
+            content=response_body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type,
+        )
+        if response.background is not None:
+            safe_response.background = response.background
+
+        try:
             status_code = response.status_code
             resp_ct = response.headers.get("content-type", "")
 
@@ -244,13 +254,7 @@ class SSTMiddleware(BaseHTTPMiddleware):
                 }
 
             self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
-
-            return Response(
-                content=response_body,
-                status_code=status_code,
-                headers=dict(response.headers),
-                media_type=response.media_type,
-            )
         except Exception:
             logger.exception("sst capture failed")
-            return response
+
+        return safe_response
