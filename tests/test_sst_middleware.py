@@ -339,7 +339,7 @@ def test_middleware_hot_path_p95_regression_budget(monkeypatch, tmp_path):
     assert p95_with - p95_without <= 2.0
 
 
-def test_default_header_redaction_masks_authorization_and_cookie(tmp_path, monkeypatch):
+def test_request_headers_are_excluded_from_capture_input(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
 
@@ -354,8 +354,7 @@ def test_default_header_redaction_masks_authorization_and_cookie(tmp_path, monke
     files = glob.glob(str(tmp_path / "*.json"))
     assert len(files) == 1
     data = json.loads(open(files[0], encoding="utf-8").read())
-    assert data["input"]["headers"]["authorization"] == "***"
-    assert data["input"]["headers"]["cookie"] == "***"
+    assert "headers" not in data["input"]
 
 
 def test_redact_body_callable_removes_password_field(tmp_path, monkeypatch):
@@ -377,15 +376,17 @@ def test_redact_body_callable_removes_password_field(tmp_path, monkeypatch):
     assert "password" not in data["input"]["body"]
 
 
-def test_authorization_header_is_redacted_case_insensitive(tmp_path, monkeypatch):
+def test_header_variation_does_not_change_semantic_id(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
 
     client = TestClient(_make_app())
-    resp = client.post("/api/price", json={"product_id": "SKU-001"}, headers={"AUTHORIZATION": "Bearer secret"})
-    assert resp.status_code == 200
+    resp_a = client.post("/api/price", json={"product_id": "SKU-001"}, headers={"AUTHORIZATION": "Bearer one"})
+    resp_b = client.post("/api/price", json={"product_id": "SKU-001"}, headers={"AUTHORIZATION": "Bearer two"})
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
 
-    files = glob.glob(str(tmp_path / "*.json"))
-    assert len(files) == 1
-    data = json.loads(open(files[0], encoding="utf-8").read())
-    assert data["input"]["headers"]["authorization"] == "***"
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) == 2
+    ids = [json.loads(open(f, encoding="utf-8").read())["semantic_id"] for f in files]
+    assert ids[0] == ids[1]
