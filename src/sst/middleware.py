@@ -244,7 +244,6 @@ class SSTMiddleware(BaseHTTPMiddleware):
             "path": path,
             "path_params": dict(request.path_params),
             "query_params": self._redact_query_map(dict(request.query_params)),
-            "headers": self._redact_headers_map(dict(request.headers)),
             "body": self._redact_body_payload(parsed_body),
         }
         masked_inputs = self._core._mask_pii(self._core._serialize(raw_inputs))
