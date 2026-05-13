@@ -218,11 +218,12 @@ class SSTMiddleware(BaseHTTPMiddleware):
             )
             return response
 
-        response_body = b""
+        response_body = bytearray()
         async for chunk in response.body_iterator:
             if isinstance(chunk, str):
                 chunk = chunk.encode("utf-8")
-            response_body += chunk
+            response_body.extend(chunk)
+        response_body = bytes(response_body)
 
         status_code = response.status_code
         resp_ct = response.headers.get("content-type", "")
