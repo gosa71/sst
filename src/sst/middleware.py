@@ -205,6 +205,7 @@ class SSTMiddleware(BaseHTTPMiddleware):
         masked_inputs = self._core._mask_pii(self._core._serialize(raw_inputs))
 
         response: Response = await call_next(request)
+        fallback_response: Response = response
 
         try:
             resp_content_type = (
@@ -243,14 +244,16 @@ class SSTMiddleware(BaseHTTPMiddleware):
                     "error": error_text,
                 }
 
-            self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
-
-            return Response(
+            fallback_response = Response(
                 content=response_body,
                 status_code=status_code,
                 headers=dict(response.headers),
                 media_type=response.media_type,
             )
+
+            self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
+
+            return fallback_response
         except Exception:
             logger.exception("sst capture failed")
-            return response
+            return fallback_response

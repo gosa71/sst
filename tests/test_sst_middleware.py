@@ -210,4 +210,5 @@ def test_capture_write_failure_does_not_break_response(tmp_path, monkeypatch, ca
         resp = client.post("/api/price", json={"product_id": "SKU-001"})
 
     assert resp.status_code == 200
+    assert resp.json() == {"product_id": "SKU-001", "price": 99.9, "currency": "USD"}
     assert "sst capture failed" in caplog.text
