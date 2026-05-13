@@ -2,6 +2,7 @@
 
 import glob
 import json
+import time
 
 import pytest
 
@@ -264,6 +265,32 @@ def test_background_task_preserved_on_safe_response(tmp_path, monkeypatch):
     assert called["value"] is True
 
 
+def test_capture_write_runs_via_background_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    marker = {"written": False}
+    original = None
+
+    from sst.middleware import SSTMiddleware
+
+    original = SSTMiddleware._write_http_capture
+
+    def _wrapped_write(self, method, path, masked_inputs, output_snapshot):
+        marker["written"] = True
+        return original(self, method, path, masked_inputs, output_snapshot)
+
+    monkeypatch.setattr(SSTMiddleware, "_write_http_capture", _wrapped_write)
+
+    client = TestClient(_make_app())
+    resp = client.post("/api/price", json={"product_id": "SKU-001"})
+
+    assert resp.status_code == 200
+    assert marker["written"] is True
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1
+
+
 def test_sampling_zero_returns_original_response_without_capture(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
@@ -275,3 +302,38 @@ def test_sampling_zero_returns_original_response_without_capture(tmp_path, monke
     assert resp.content == b'{"product_id":"SKU-001","price":99.9,"currency":"USD"}'
     files = glob.glob(str(tmp_path / "*.json"))
     assert files == []
+
+
+def test_middleware_hot_path_p95_regression_budget(monkeypatch, tmp_path):
+    if "GITHUB_ACTIONS" in __import__("os").environ:
+        pytest.skip("skip potentially flaky microbenchmark in CI")
+
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path / "with_sst"))
+
+    async def _endpoint(request: Request):
+        return JSONResponse({"ok": True})
+
+    app_with = Starlette(routes=[Route("/ping", _endpoint, methods=["GET"])])
+    from sst.middleware import SSTMiddleware
+
+    app_with.add_middleware(SSTMiddleware)
+    client_with = TestClient(app_with)
+
+    app_without = Starlette(routes=[Route("/ping", _endpoint, methods=["GET"])])
+    client_without = TestClient(app_without)
+
+    def _measure(client):
+        samples = []
+        for _ in range(10_000):
+            t0 = time.perf_counter_ns()
+            resp = client.get("/ping")
+            assert resp.status_code == 200
+            samples.append((time.perf_counter_ns() - t0) / 1_000_000)
+        samples.sort()
+        return samples[int(len(samples) * 0.95)]
+
+    p95_without = _measure(client_without)
+    p95_with = _measure(client_with)
+
+    assert p95_with - p95_without <= 2.0

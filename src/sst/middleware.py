@@ -44,6 +44,7 @@ _STREAMING_CONTENT_TYPES = frozenset(
 
 try:
     from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.background import BackgroundTask, BackgroundTasks
     from starlette.requests import Request
     from starlette.responses import Response
     from starlette.types import ASGIApp
@@ -181,6 +182,22 @@ class SSTMiddleware(BaseHTTPMiddleware):
         fpath = Path(self._core.storage_dir) / filename
         fpath.write_text(payload_str, encoding="utf-8")
 
+    @staticmethod
+    def _append_background_task(response: Response, task: BackgroundTask) -> None:
+        """Append task to response.background without replacing existing tasks."""
+        if response.background is None:
+            response.background = task
+            return
+        if isinstance(response.background, BackgroundTasks):
+            response.background.add_task(task.func, *task.args, **task.kwargs)
+            return
+
+        existing = response.background
+        chained = BackgroundTasks()
+        chained.add_task(existing.func, *existing.args, **existing.kwargs)
+        chained.add_task(task.func, *task.args, **task.kwargs)
+        response.background = chained
+
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
@@ -234,27 +251,30 @@ class SSTMiddleware(BaseHTTPMiddleware):
         if response.background is not None:
             safe_response.background = response.background
 
-        try:
-            status_code = response.status_code
-            resp_ct = response.headers.get("content-type", "")
+        def _capture_in_background() -> None:
+            try:
+                status_code = response.status_code
+                resp_ct = response.headers.get("content-type", "")
 
-            if 200 <= status_code < 300:
-                raw_result = self._parse_json_body(response_body, resp_ct)
-                masked_result = self._core._mask_pii(self._core._serialize(raw_result))
-                output_snapshot: CaptureOutput = {
-                    "status": "success",
-                    "raw_result": masked_result,
-                }
-            else:
-                error_text = response_body.decode("utf-8", errors="replace")[:500]
-                output_snapshot = {
-                    "status": "failure",
-                    "error_type": f"HTTP_{status_code}",
-                    "error": error_text,
-                }
+                if 200 <= status_code < 300:
+                    raw_result = self._parse_json_body(response_body, resp_ct)
+                    masked_result = self._core._mask_pii(self._core._serialize(raw_result))
+                    output_snapshot: CaptureOutput = {
+                        "status": "success",
+                        "raw_result": masked_result,
+                    }
+                else:
+                    error_text = response_body.decode("utf-8", errors="replace")[:500]
+                    output_snapshot = {
+                        "status": "failure",
+                        "error_type": f"HTTP_{status_code}",
+                        "error": error_text,
+                    }
 
-            self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
-        except Exception:
-            logger.exception("sst capture failed")
+                self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
+            except Exception:
+                logger.exception("sst capture failed")
+
+        self._append_background_task(safe_response, BackgroundTask(_capture_in_background))
 
         return safe_response
