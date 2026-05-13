@@ -228,9 +228,9 @@ class SSTMiddleware(BaseHTTPMiddleware):
         safe_response = Response(
             content=response_body,
             status_code=response.status_code,
-            headers=dict(response.headers),
             media_type=response.media_type,
         )
+        safe_response.raw_headers = list(response.raw_headers)
         if response.background is not None:
             safe_response.background = response.background
 

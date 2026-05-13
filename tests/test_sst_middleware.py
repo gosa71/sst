@@ -264,6 +264,35 @@ def test_background_task_preserved_on_safe_response(tmp_path, monkeypatch):
     assert called["value"] is True
 
 
+
+def test_capture_fallback_preserves_duplicate_set_cookie_headers(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    from sst.middleware import SSTMiddleware
+    from starlette.responses import Response
+
+    def _raise_disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("sst.middleware.Path.write_text", _raise_disk_full)
+
+    async def _endpoint(request: Request):
+        response = Response(content=b"ok", media_type="text/plain")
+        response.headers.append("set-cookie", "a=1; Path=/")
+        response.headers.append("set-cookie", "b=2; Path=/")
+        return response
+
+    app = Starlette(routes=[Route("/cookies", _endpoint, methods=["GET"])])
+    app.add_middleware(SSTMiddleware)
+
+    client = TestClient(app)
+    resp = client.get("/cookies")
+
+    assert resp.status_code == 200
+    assert resp.content == b"ok"
+    assert resp.headers.get_list("set-cookie") == ["a=1; Path=/", "b=2; Path=/"]
+
 def test_sampling_zero_returns_original_response_without_capture(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
