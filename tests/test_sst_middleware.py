@@ -211,3 +211,67 @@ def test_capture_write_failure_does_not_break_response(tmp_path, monkeypatch, ca
 
     assert resp.status_code == 200
     assert "sst capture failed" in caplog.text
+    assert resp.content == b'{"product_id":"SKU-001","price":99.9,"currency":"USD"}'
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert files == []
+
+
+def test_capture_exception_before_write_keeps_response_body(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    monkeypatch.setattr(
+        "sst.middleware.SSTMiddleware._parse_json_body",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("boom")),
+    )
+
+    client = TestClient(_make_app())
+    with caplog.at_level("ERROR"):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+
+    assert resp.status_code == 200
+    assert resp.content == b'{"product_id":"SKU-001","price":99.9,"currency":"USD"}'
+    assert "sst capture failed" in caplog.text
+
+
+def test_background_task_preserved_on_safe_response(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    from sst.middleware import SSTMiddleware
+    from starlette.background import BackgroundTask
+    from starlette.responses import Response
+
+    called = {"value": False}
+
+    async def _endpoint(request: Request):
+        async def _bg():
+            called["value"] = True
+
+        return Response(
+            content=b"ok",
+            media_type="text/plain",
+            background=BackgroundTask(_bg),
+        )
+
+    app = Starlette(routes=[Route("/bg", _endpoint, methods=["GET"])])
+    app.add_middleware(SSTMiddleware)
+
+    client = TestClient(app)
+    resp = client.get("/bg")
+    assert resp.status_code == 200
+    assert resp.content == b"ok"
+    assert called["value"] is True
+
+
+def test_sampling_zero_returns_original_response_without_capture(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app({"sampling_rate": 0.0}))
+    resp = client.post("/api/price", json={"product_id": "SKU-001"})
+
+    assert resp.status_code == 200
+    assert resp.content == b'{"product_id":"SKU-001","price":99.9,"currency":"USD"}'
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert files == []
