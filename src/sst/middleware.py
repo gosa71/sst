@@ -194,8 +194,9 @@ class SSTMiddleware(BaseHTTPMiddleware):
 
         existing = response.background
         chained = BackgroundTasks()
-        chained.add_task(existing.func, *existing.args, **existing.kwargs)
+        # Run SST capture first so it still executes if later background tasks fail.
         chained.add_task(task.func, *task.args, **task.kwargs)
+        chained.add_task(existing.func, *existing.args, **existing.kwargs)
         response.background = chained
 
     async def dispatch(self, request: Request, call_next) -> Response:
