@@ -151,7 +151,12 @@ class SSTMiddleware(BaseHTTPMiddleware):
             return
 
         os.makedirs(self._core.storage_dir, exist_ok=True)
-        semantic_id = _Fingerprint.semantic_hash(masked_inputs)
+        # Semantic IDs must remain stable across environments. Exclude headers
+        # even if they are present in capture input, since values such as
+        # User-Agent/Auth metadata are volatile and can fragment baselines.
+        semantic_inputs = dict(masked_inputs)
+        semantic_inputs.pop("headers", None)
+        semantic_id = _Fingerprint.semantic_hash(semantic_inputs)
         now = datetime.now(timezone.utc)
         payload = CapturePayload(
             function=f"{method} {path}",
