@@ -66,6 +66,8 @@ def test_config_defaults_include_new_polish_flags(tmp_path, monkeypatch):
 
     assert cfg.clean_shadow_on_record is False
     assert cfg.strict_pii_matching is True
+    assert cfg.max_capture_dir_bytes == 1 * 1024 * 1024 * 1024
+    assert cfg.max_pending_files == 10000
 
 
 def test_config_loads_new_polish_flags_from_pyproject(tmp_path, monkeypatch):
