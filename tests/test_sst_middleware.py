@@ -278,7 +278,14 @@ def test_capture_write_runs_via_background_task(tmp_path, monkeypatch):
 
     def _wrapped_write(self, method, path, masked_inputs, output_snapshot, request_hash):
         marker["written"] = True
-        return original(self, method, path, masked_inputs, output_snapshot, request_hash)
+        return original(
+            self,
+            method,
+            path,
+            masked_inputs,
+            output_snapshot,
+            request_hash=request_hash,
+        )
 
     monkeypatch.setattr(SSTMiddleware, "_write_http_capture", _wrapped_write)
 
