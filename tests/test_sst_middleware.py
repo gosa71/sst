@@ -276,7 +276,7 @@ def test_capture_write_runs_via_background_task(tmp_path, monkeypatch):
 
     original = SSTMiddleware._write_http_capture
 
-    def _wrapped_write(self, method, path, masked_inputs, output_snapshot):
+    def _wrapped_write(self, method, path, masked_inputs, output_snapshot, request_hash):
         marker["written"] = True
         return original(self, method, path, masked_inputs, output_snapshot)
 
@@ -441,3 +441,45 @@ def test_dir_size_probe_ttl_limits_scandir_calls(tmp_path, monkeypatch):
         assert resp.status_code == 200
 
     assert calls["n"] <= 2
+
+
+def test_pending_dedup_caps_identical_requests_at_three(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    for _ in range(1000):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+        assert resp.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) <= 3
+
+
+def test_pending_dedup_uses_separate_counters_for_different_bodies(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    for _ in range(1000):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+        assert resp.status_code == 200
+    for _ in range(1000):
+        resp = client.post("/api/price", json={"product_id": "SKU-002"})
+        assert resp.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) <= 6
+
+    grouped = {}
+    for file_path in files:
+        name = file_path.rsplit("/", 1)[-1]
+        parts = name.rsplit("_", 4)
+        assert len(parts) >= 5
+        semantic_id = parts[-4]
+        request_hash = parts[-3]
+        grouped.setdefault((semantic_id, request_hash), 0)
+        grouped[(semantic_id, request_hash)] += 1
+
+    assert len(grouped) == 2
+    assert all(count <= 3 for count in grouped.values())

@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -37,6 +38,20 @@ from . import __version__
 logger = logging.getLogger(__name__)
 sst_capture_dropped_total = 0
 _sst_capture_dropped_lock = threading.Lock()
+
+
+_HOP_BY_HOP_HEADERS = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+    }
+)
 
 _STREAMING_CONTENT_TYPES = frozenset(
     {
@@ -114,6 +129,9 @@ class SSTMiddleware(BaseHTTPMiddleware):
         self._redact_headers = {header.lower() for header in (redact_headers or default_headers)}
         self._redact_query = {key.lower() for key in (redact_query or [])}
         self._redact_body = redact_body
+        self._pending_counts_lock = threading.Lock()
+        self._pending_counts: dict[tuple[str, str], int] = {}
+        self._rehydrate_pending_counts()
 
     def _capture_limit_exceeded(self) -> bool:
         size_bytes, files_count = self._dir_probe.get(self._core.storage_dir)
@@ -148,12 +166,78 @@ class SSTMiddleware(BaseHTTPMiddleware):
                 return {}
         return {}
 
+    @staticmethod
+    def _canonical_json(value: object) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _headers_subset_for_hash(self, headers: dict[str, str]) -> dict[str, str]:
+        subset: dict[str, str] = {}
+        for key, value in headers.items():
+            key_lower = key.lower()
+            if key_lower in self._redact_headers or key_lower in _HOP_BY_HOP_HEADERS:
+                continue
+            subset[key_lower] = value
+        return subset
+
+    def _compute_request_hash(
+        self,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        parsed_body: object,
+        request_body: bytes,
+        content_type: str,
+    ) -> str:
+        if isinstance(parsed_body, (dict, list, str, int, float, bool)) or parsed_body is None:
+            body_for_hash: object = parsed_body
+        else:
+            body_for_hash = {}
+
+        if "application/json" not in content_type and request_body:
+            body_for_hash = {"binary_sha256": hashlib.sha256(request_body).hexdigest()}
+
+        canonical_payload = {
+            "method": method,
+            "path": path,
+            "headers": self._headers_subset_for_hash(headers),
+            "body": body_for_hash,
+        }
+        digest = hashlib.sha256(self._canonical_json(canonical_payload).encode("utf-8")).hexdigest()
+        return digest[:16]
+
+    def _rehydrate_pending_counts(self) -> None:
+        try:
+            storage = Path(self._core.storage_dir)
+            if not storage.exists():
+                return
+            for file_path in storage.glob("*.json"):
+                name = file_path.stem
+                parts = name.rsplit("_", 4)
+                if len(parts) < 5:
+                    continue
+                semantic_id = parts[-4]
+                request_hash = parts[-3]
+                if len(semantic_id) != 32 or len(request_hash) != 16:
+                    continue
+                key = (semantic_id, request_hash)
+                self._pending_counts[key] = self._pending_counts.get(key, 0) + 1
+        except Exception:
+            logger.debug("SST: failed to rehydrate pending counts", exc_info=True)
+
+    def _allow_pending_capture(self, semantic_id: str, request_hash: str) -> bool:
+        key = (semantic_id, request_hash)
+        with self._pending_counts_lock:
+            next_count = self._pending_counts.get(key, 0) + 1
+            self._pending_counts[key] = next_count
+            return next_count <= 3
+
     def _write_http_capture(
         self,
         method: str,
         path: str,
         masked_inputs: Dict,
         output_snapshot: CaptureOutput,
+        request_hash: str,
     ) -> None:
         """Write one HTTP capture to shadow_dir.
 
@@ -166,6 +250,8 @@ class SSTMiddleware(BaseHTTPMiddleware):
         os.makedirs(self._core.storage_dir, exist_ok=True)
         semantic_id = _Fingerprint.semantic_hash(masked_inputs)
         now = datetime.now(timezone.utc)
+        if not self._allow_pending_capture(semantic_id, request_hash):
+            return
         payload = CapturePayload(
             function=f"{method} {path}",
             module="http",
@@ -189,7 +275,7 @@ class SSTMiddleware(BaseHTTPMiddleware):
         safe_path = path.replace("/", "_")
         pid = os.getpid()
         filename = (
-            f"http.{method}{safe_path}_{semantic_id}_"
+            f"http.{method}{safe_path}_{semantic_id}_{request_hash}_"
             f"{pid}_"
             f"{now.strftime('%H%M%S_%f')}.json"
         )
@@ -252,6 +338,14 @@ class SSTMiddleware(BaseHTTPMiddleware):
 
         content_type = request.headers.get("content-type", "")
         parsed_body = self._parse_json_body(request_body, content_type)
+        request_hash = self._compute_request_hash(
+            request.method,
+            path,
+            dict(request.headers),
+            parsed_body,
+            request_body,
+            content_type,
+        )
         raw_inputs = {
             "method": request.method,
             "path": path,
@@ -317,7 +411,13 @@ class SSTMiddleware(BaseHTTPMiddleware):
                         "error": error_text,
                     }
 
-                self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
+                self._write_http_capture(
+                    request.method,
+                    path,
+                    masked_inputs,
+                    output_snapshot,
+                    request_hash,
+                )
             except Exception:
                 logger.exception("sst capture failed")
 
