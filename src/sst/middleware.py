@@ -224,12 +224,23 @@ class SSTMiddleware(BaseHTTPMiddleware):
         except Exception:
             logger.debug("SST: failed to rehydrate pending counts", exc_info=True)
 
-    def _allow_pending_capture(self, semantic_id: str, request_hash: str) -> bool:
+    def _reserve_pending_capture(self, semantic_id: str, request_hash: str) -> bool:
         key = (semantic_id, request_hash)
         with self._pending_counts_lock:
             next_count = self._pending_counts.get(key, 0) + 1
+            if next_count > 3:
+                return False
             self._pending_counts[key] = next_count
-            return next_count <= 3
+            return True
+
+    def _release_pending_reservation(self, semantic_id: str, request_hash: str) -> None:
+        key = (semantic_id, request_hash)
+        with self._pending_counts_lock:
+            current = self._pending_counts.get(key, 0)
+            if current <= 1:
+                self._pending_counts.pop(key, None)
+            else:
+                self._pending_counts[key] = current - 1
 
     def _write_http_capture(
         self,
@@ -250,7 +261,7 @@ class SSTMiddleware(BaseHTTPMiddleware):
         os.makedirs(self._core.storage_dir, exist_ok=True)
         semantic_id = _Fingerprint.semantic_hash(masked_inputs)
         now = datetime.now(timezone.utc)
-        if not self._allow_pending_capture(semantic_id, request_hash):
+        if not self._reserve_pending_capture(semantic_id, request_hash):
             return
         payload = CapturePayload(
             function=f"{method} {path}",
@@ -279,14 +290,18 @@ class SSTMiddleware(BaseHTTPMiddleware):
             f"{pid}_"
             f"{now.strftime('%H%M%S_%f')}.json"
         )
-        payload_str = json.dumps(
-            asdict(payload),
-            indent=2,
-            sort_keys=True,
-            allow_nan=False,
-        )
-        fpath = Path(self._core.storage_dir) / filename
-        fpath.write_text(payload_str, encoding="utf-8")
+        try:
+            payload_str = json.dumps(
+                asdict(payload),
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            fpath = Path(self._core.storage_dir) / filename
+            fpath.write_text(payload_str, encoding="utf-8")
+        except Exception:
+            self._release_pending_reservation(semantic_id, request_hash)
+            raise
 
     @staticmethod
     def _append_background_task(response: Response, task: BackgroundTask) -> None:

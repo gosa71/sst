@@ -278,7 +278,7 @@ def test_capture_write_runs_via_background_task(tmp_path, monkeypatch):
 
     def _wrapped_write(self, method, path, masked_inputs, output_snapshot, request_hash):
         marker["written"] = True
-        return original(self, method, path, masked_inputs, output_snapshot)
+        return original(self, method, path, masked_inputs, output_snapshot, request_hash)
 
     monkeypatch.setattr(SSTMiddleware, "_write_http_capture", _wrapped_write)
 
@@ -483,3 +483,29 @@ def test_pending_dedup_uses_separate_counters_for_different_bodies(tmp_path, mon
 
     assert len(grouped) == 2
     assert all(count <= 3 for count in grouped.values())
+
+
+def test_pending_reservation_released_on_write_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    calls = {"n": 0}
+
+    def _flaky_write(self, method, path, masked_inputs, output_snapshot, request_hash):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise OSError("disk full")
+        return _orig_write(self, method, path, masked_inputs, output_snapshot, request_hash)
+
+    from sst.middleware import SSTMiddleware
+
+    _orig_write = SSTMiddleware._write_http_capture
+    monkeypatch.setattr(SSTMiddleware, "_write_http_capture", _flaky_write)
+
+    client = TestClient(_make_app())
+    for _ in range(5):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+        assert resp.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) == 3
