@@ -189,7 +189,10 @@ class SSTMiddleware(BaseHTTPMiddleware):
             response.background = task
             return
         if isinstance(response.background, BackgroundTasks):
+            existing_tasks = list(response.background.tasks)
+            response.background.tasks = []
             response.background.add_task(task.func, *task.args, **task.kwargs)
+            response.background.tasks.extend(existing_tasks)
             return
 
         existing = response.background
