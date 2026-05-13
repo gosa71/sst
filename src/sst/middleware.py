@@ -25,6 +25,8 @@ import logging
 import os
 import platform
 import socket
+import threading
+import time
 from pathlib import Path
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -33,6 +35,8 @@ from typing import Callable, Dict, List, Optional, Sequence
 from . import __version__
 
 logger = logging.getLogger(__name__)
+sst_capture_dropped_total = 0
+_sst_capture_dropped_lock = threading.Lock()
 
 _STREAMING_CONTENT_TYPES = frozenset(
     {
@@ -102,6 +106,7 @@ class SSTMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
         self._core = SSTCore()
+        self._dir_probe = _DirSizeProbe(ttl_seconds=5.0)
         self._include_paths: List[str] = list(include_paths or [])
         self._exclude_paths: List[str] = list(exclude_paths or [])
         self._sampling_rate = sampling_rate
@@ -109,6 +114,14 @@ class SSTMiddleware(BaseHTTPMiddleware):
         self._redact_headers = {header.lower() for header in (redact_headers or default_headers)}
         self._redact_query = {key.lower() for key in (redact_query or [])}
         self._redact_body = redact_body
+
+    def _capture_limit_exceeded(self) -> bool:
+        size_bytes, files_count = self._dir_probe.get(self._core.storage_dir)
+        config = self._core.config
+        return (
+            size_bytes > config.max_capture_dir_bytes
+            or files_count > config.max_pending_files
+        )
 
     def _should_capture_path(self, path: str) -> bool:
         """Return True if this path should be captured.
@@ -281,6 +294,11 @@ class SSTMiddleware(BaseHTTPMiddleware):
 
         def _capture_in_background() -> None:
             try:
+                if self._capture_limit_exceeded():
+                    global sst_capture_dropped_total
+                    with _sst_capture_dropped_lock:
+                        sst_capture_dropped_total += 1
+                    return
                 status_code = response.status_code
                 resp_ct = response.headers.get("content-type", "")
 
@@ -306,3 +324,43 @@ class SSTMiddleware(BaseHTTPMiddleware):
         self._append_background_task(safe_response, BackgroundTask(_capture_in_background))
 
         return safe_response
+
+
+class _DirSizeProbe:
+    def __init__(self, ttl_seconds: float = 5.0) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._lock = threading.Lock()
+        self._last_ts = 0.0
+        self._last_path: str | None = None
+        self._cached = (0, 0)
+
+    def get(self, dir_path: str | os.PathLike[str]) -> tuple[int, int]:
+        now = time.monotonic()
+        path_str = os.fspath(dir_path)
+        with self._lock:
+            if (
+                self._last_path == path_str
+                and now - self._last_ts <= self._ttl_seconds
+            ):
+                return self._cached
+
+            total_bytes = 0
+            file_count = 0
+            try:
+                with os.scandir(path_str) as entries:
+                    for entry in entries:
+                        if not entry.is_file():
+                            continue
+                        file_count += 1
+                        try:
+                            total_bytes += entry.stat().st_size
+                        except OSError:
+                            continue
+            except FileNotFoundError:
+                total_bytes = 0
+                file_count = 0
+
+            self._cached = (total_bytes, file_count)
+            self._last_ts = now
+            self._last_path = path_str
+            return self._cached

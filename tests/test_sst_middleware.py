@@ -389,3 +389,55 @@ def test_authorization_header_is_redacted_case_insensitive(tmp_path, monkeypatch
     assert len(files) == 1
     data = json.loads(open(files[0], encoding="utf-8").read())
     assert data["input"]["headers"]["authorization"] == "***"
+
+
+def test_capture_dropped_when_pending_files_limit_exceeded(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("SST_MAX_PENDING_FILES", "1")
+
+    (tmp_path / "existing-a.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "existing-b.json").write_text("{}", encoding="utf-8")
+
+    import sst.middleware as middleware_mod
+    from sst.config import refresh_config
+
+    refresh_config()
+    middleware_mod.sst_capture_dropped_total = 0
+
+    client = TestClient(_make_app())
+    for _ in range(5):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+        assert resp.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) == 2
+    assert middleware_mod.sst_capture_dropped_total == 5
+
+
+def test_dir_size_probe_ttl_limits_scandir_calls(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("SST_MAX_PENDING_FILES", "100000")
+    monkeypatch.setenv("SST_MAX_CAPTURE_DIR_BYTES", str(10**9))
+
+    import sst.middleware as middleware_mod
+    from sst.config import refresh_config
+
+    refresh_config()
+    middleware_mod.sst_capture_dropped_total = 0
+    calls = {"n": 0}
+    original_scandir = middleware_mod.os.scandir
+
+    def _counting_scandir(path):
+        calls["n"] += 1
+        return original_scandir(path)
+
+    monkeypatch.setattr(middleware_mod.os, "scandir", _counting_scandir)
+
+    client = TestClient(_make_app())
+    for _ in range(100):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+        assert resp.status_code == 200
+
+    assert calls["n"] <= 2

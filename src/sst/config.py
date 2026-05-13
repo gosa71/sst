@@ -36,6 +36,8 @@ class Config:
     strict_pii_matching: bool = True
     verify_timeout: int = 300
     max_capture_age_seconds: int = 3600
+    max_capture_dir_bytes: int = 1 * 1024 * 1024 * 1024
+    max_pending_files: int = 10000
 
 
 _ENV_PREFIX = "SST_"
@@ -153,6 +155,14 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         os.getenv("SST_MAX_CAPTURE_AGE_SECONDS", raw.get("max_capture_age_seconds", 3600)),
         3600,
     )
+    max_capture_dir_bytes = _to_int(
+        os.getenv("SST_MAX_CAPTURE_DIR_BYTES", raw.get("max_capture_dir_bytes", 1 * 1024 * 1024 * 1024)),
+        1 * 1024 * 1024 * 1024,
+    )
+    max_pending_files = _to_int(
+        os.getenv("SST_MAX_PENDING_FILES", raw.get("max_pending_files", 10000)),
+        10000,
+    )
 
     env_ignored = os.getenv(f"{_ENV_PREFIX}DIFF_IGNORED_FIELDS")
     if env_ignored is not None:
@@ -180,6 +190,8 @@ def _from_sources(raw: Dict[str, Any]) -> Config:
         strict_pii_matching=strict_pii_matching,
         verify_timeout=max(1, verify_timeout),
         max_capture_age_seconds=max(1, max_capture_age_seconds),
+        max_capture_dir_bytes=max(1, max_capture_dir_bytes),
+        max_pending_files=max(1, max_pending_files),
     )
 
 
