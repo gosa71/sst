@@ -474,16 +474,35 @@ def test_pending_dedup_uses_separate_counters_for_different_bodies(tmp_path, mon
     grouped = {}
     for file_path in files:
         name = file_path.rsplit("/", 1)[-1]
-        parts = name.rsplit("_", 4)
-        assert len(parts) >= 5
-        semantic_id = parts[-4]
-        request_hash = parts[-3]
+        parts = name.rsplit("_", 5)
+        assert len(parts) >= 6
+        semantic_id = parts[-5]
+        request_hash = parts[-4]
         grouped.setdefault((semantic_id, request_hash), 0)
         grouped[(semantic_id, request_hash)] += 1
 
     assert len(grouped) == 2
     assert all(count <= 3 for count in grouped.values())
 
+
+
+
+def test_rehydrate_pending_counts_parses_semantic_id_and_request_hash(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    semantic_id = "a" * 32
+    request_hash = "b" * 16
+    filename = (
+        f"http.POST_api_price_{semantic_id}_{request_hash}_"
+        "1234_120000_123456.json"
+    )
+    (tmp_path / filename).write_text("{}", encoding="utf-8")
+
+    from sst.middleware import SSTMiddleware
+
+    instance = SSTMiddleware(app=Starlette())
+    assert instance._pending_counts[(semantic_id, request_hash)] == 1
 
 def test_pending_reservation_released_on_write_error(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
