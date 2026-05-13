@@ -212,11 +212,11 @@ class SSTMiddleware(BaseHTTPMiddleware):
                 return
             for file_path in storage.glob("*.json"):
                 name = file_path.stem
-                parts = name.rsplit("_", 4)
-                if len(parts) < 5:
+                parts = name.rsplit("_", 5)
+                if len(parts) < 6:
                     continue
-                semantic_id = parts[-4]
-                request_hash = parts[-3]
+                semantic_id = parts[-5]
+                request_hash = parts[-4]
                 if len(semantic_id) != 32 or len(request_hash) != 16:
                     continue
                 key = (semantic_id, request_hash)
