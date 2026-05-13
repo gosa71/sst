@@ -171,3 +171,26 @@ def test_pii_masked_in_capture(tmp_path, monkeypatch):
     raw = open(files[0], encoding="utf-8").read()
     assert "customer@example.com" not in raw, "Email must be PII-masked in capture"
     assert "MASKED_EMAIL" in raw, "PII masking marker must be present"
+
+
+def test_capture_filenames_include_pid_and_do_not_collide(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+
+    monkeypatch.setattr("sst.middleware.os.getpid", lambda: 1001)
+    resp_a = client.post("/api/price", json={"product_id": "SKU-001"})
+    assert resp_a.status_code == 200
+
+    monkeypatch.setattr("sst.middleware.os.getpid", lambda: 1002)
+    resp_b = client.post("/api/price", json={"product_id": "SKU-001"})
+    assert resp_b.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) == 2
+
+    basenames = [f.rsplit("/", 1)[-1] for f in files]
+    assert basenames[0] != basenames[1]
+    assert "_1001_" in basenames[0] or "_1001_" in basenames[1]
+    assert "_1002_" in basenames[0] or "_1002_" in basenames[1]
