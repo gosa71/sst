@@ -194,3 +194,20 @@ def test_capture_filenames_include_pid_and_do_not_collide(tmp_path, monkeypatch)
     assert basenames[0] != basenames[1]
     assert "_1001_" in basenames[0] or "_1001_" in basenames[1]
     assert "_1002_" in basenames[0] or "_1002_" in basenames[1]
+
+
+def test_capture_write_failure_does_not_break_response(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    def _raise_disk_full(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("sst.middleware.Path.write_text", _raise_disk_full)
+
+    client = TestClient(_make_app())
+    with caplog.at_level("ERROR"):
+        resp = client.post("/api/price", json={"product_id": "SKU-001"})
+
+    assert resp.status_code == 200
+    assert "sst capture failed" in caplog.text
