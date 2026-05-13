@@ -28,7 +28,7 @@ import socket
 from pathlib import Path
 from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 from . import __version__
 
@@ -96,12 +96,19 @@ class SSTMiddleware(BaseHTTPMiddleware):
         include_paths: Optional[Sequence[str]] = None,
         exclude_paths: Optional[Sequence[str]] = None,
         sampling_rate: Optional[float] = None,
+        redact_headers: list[str] | None = None,
+        redact_query: list[str] | None = None,
+        redact_body: Callable[[dict], dict] | None = None,
     ) -> None:
         super().__init__(app)
         self._core = SSTCore()
         self._include_paths: List[str] = list(include_paths or [])
         self._exclude_paths: List[str] = list(exclude_paths or [])
         self._sampling_rate = sampling_rate
+        default_headers = ["authorization", "cookie", "set-cookie", "x-api-key"]
+        self._redact_headers = {header.lower() for header in (redact_headers or default_headers)}
+        self._redact_query = {key.lower() for key in (redact_query or [])}
+        self._redact_body = redact_body
 
     def _should_capture_path(self, path: str) -> bool:
         """Return True if this path should be captured.
@@ -198,6 +205,25 @@ class SSTMiddleware(BaseHTTPMiddleware):
         chained.add_task(task.func, *task.args, **task.kwargs)
         response.background = chained
 
+    def _redact_headers_map(self, headers: dict[str, str]) -> dict[str, str]:
+        redacted = dict(headers)
+        for key in list(redacted.keys()):
+            if key.lower() in self._redact_headers:
+                redacted[key] = "***"
+        return redacted
+
+    def _redact_query_map(self, query: dict[str, str]) -> dict[str, str]:
+        redacted = dict(query)
+        for key in list(redacted.keys()):
+            if key.lower() in self._redact_query:
+                redacted[key] = "***"
+        return redacted
+
+    def _redact_body_payload(self, body: object) -> object:
+        if isinstance(body, dict) and self._redact_body is not None:
+            return self._redact_body(dict(body))
+        return body
+
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
@@ -212,12 +238,14 @@ class SSTMiddleware(BaseHTTPMiddleware):
         request_body = await request.body()
 
         content_type = request.headers.get("content-type", "")
+        parsed_body = self._parse_json_body(request_body, content_type)
         raw_inputs = {
             "method": request.method,
             "path": path,
             "path_params": dict(request.path_params),
-            "query_params": dict(request.query_params),
-            "body": self._parse_json_body(request_body, content_type),
+            "query_params": self._redact_query_map(dict(request.query_params)),
+            "headers": self._redact_headers_map(dict(request.headers)),
+            "body": self._redact_body_payload(parsed_body),
         }
         masked_inputs = self._core._mask_pii(self._core._serialize(raw_inputs))
 

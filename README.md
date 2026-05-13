@@ -132,6 +132,28 @@ app.add_middleware(SSTMiddleware, exclude_paths=["/health", "/metrics", "/docs"]
 app.add_middleware(SSTMiddleware, sampling_rate=0.05)
 ```
 
+**Redact secrets before capture is written to disk:**
+
+```python
+def redact_body(payload: dict) -> dict:
+    cleaned = dict(payload)
+    if "password" in cleaned:
+        cleaned["password"] = "***"
+    return cleaned
+
+app.add_middleware(
+    SSTMiddleware,
+    redact_headers=["authorization", "cookie", "set-cookie", "x-api-key"],
+    redact_query=["token", "api_key"],
+    redact_body=redact_body,
+)
+```
+
+`redact_headers` is case-insensitive and defaults to
+`["authorization", "cookie", "set-cookie", "x-api-key"]`.
+SST keeps the key in captures and replaces only the value with `***`
+so the presence of header/query fields remains visible for debugging.
+
 **Install:**
 
 ```bash

@@ -337,3 +337,55 @@ def test_middleware_hot_path_p95_regression_budget(monkeypatch, tmp_path):
     p95_with = _measure(client_with)
 
     assert p95_with - p95_without <= 2.0
+
+
+def test_default_header_redaction_masks_authorization_and_cookie(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    resp = client.post(
+        "/api/price",
+        json={"product_id": "SKU-001"},
+        headers={"Authorization": "Bearer secret", "cookie": "sid=abc"},
+    )
+    assert resp.status_code == 200
+
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1
+    data = json.loads(open(files[0], encoding="utf-8").read())
+    assert data["input"]["headers"]["authorization"] == "***"
+    assert data["input"]["headers"]["cookie"] == "***"
+
+
+def test_redact_body_callable_removes_password_field(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    def _redact_body(payload: dict) -> dict:
+        cleaned = dict(payload)
+        cleaned.pop("password", None)
+        return cleaned
+
+    client = TestClient(_make_app({"redact_body": _redact_body}))
+    resp = client.post("/api/price", json={"product_id": "SKU-001", "password": "secret"})
+    assert resp.status_code == 200
+
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1
+    data = json.loads(open(files[0], encoding="utf-8").read())
+    assert "password" not in data["input"]["body"]
+
+
+def test_authorization_header_is_redacted_case_insensitive(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    resp = client.post("/api/price", json={"product_id": "SKU-001"}, headers={"AUTHORIZATION": "Bearer secret"})
+    assert resp.status_code == 200
+
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1
+    data = json.loads(open(files[0], encoding="utf-8").read())
+    assert data["input"]["headers"]["authorization"] == "***"
