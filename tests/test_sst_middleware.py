@@ -265,6 +265,45 @@ def test_background_task_preserved_on_safe_response(tmp_path, monkeypatch):
     assert called["value"] is True
 
 
+
+def test_capture_runs_before_existing_background_task_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    from starlette.background import BackgroundTask
+    from starlette.responses import Response
+    from sst.middleware import SSTMiddleware
+
+    marker = {"written": False}
+    original_write = SSTMiddleware._write_http_capture
+
+    def _wrapped_write(self, method, path, masked_inputs, output_snapshot):
+        marker["written"] = True
+        return original_write(self, method, path, masked_inputs, output_snapshot)
+
+    monkeypatch.setattr(SSTMiddleware, "_write_http_capture", _wrapped_write)
+
+    async def _endpoint(request: Request):
+        def _failing_bg_task():
+            raise RuntimeError("endpoint background task failed")
+
+        return Response(
+            content=b"ok",
+            media_type="text/plain",
+            background=BackgroundTask(_failing_bg_task),
+        )
+
+    app = Starlette(routes=[Route("/bg-fail", _endpoint, methods=["GET"])])
+    app.add_middleware(SSTMiddleware)
+
+    client = TestClient(app)
+    with pytest.raises(RuntimeError, match="endpoint background task failed"):
+        client.get("/bg-fail")
+
+    assert marker["written"] is True
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1
+
 def test_capture_write_runs_via_background_task(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
