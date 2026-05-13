@@ -165,8 +165,10 @@ class SSTMiddleware(BaseHTTPMiddleware):
                 source="",
             )
             safe_path = path.replace("/", "_")
+            pid = os.getpid()
             filename = (
                 f"http.{method}{safe_path}_{semantic_id}_"
+                f"{pid}_"
                 f"{now.strftime('%H%M%S_%f')}.json"
             )
             payload_str = json.dumps(
