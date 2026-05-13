@@ -376,6 +376,32 @@ def test_redact_body_callable_removes_password_field(tmp_path, monkeypatch):
     assert "password" not in data["input"]["body"]
 
 
+
+
+def test_user_agent_variation_does_not_change_semantic_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    client = TestClient(_make_app())
+    resp_a = client.post(
+        "/api/price",
+        json={"product_id": "SKU-001"},
+        headers={"user-agent": "client-a/1.0"},
+    )
+    resp_b = client.post(
+        "/api/price",
+        json={"product_id": "SKU-001"},
+        headers={"user-agent": "client-b/2.0"},
+    )
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
+
+    files = sorted(glob.glob(str(tmp_path / "*.json")))
+    assert len(files) == 2
+    captures = [json.loads(open(f, encoding="utf-8").read()) for f in files]
+    assert captures[0]["semantic_id"] == captures[1]["semantic_id"]
+    assert "headers" not in captures[0]["input"]
+    assert "headers" not in captures[1]["input"]
 def test_header_variation_does_not_change_semantic_id(tmp_path, monkeypatch):
     monkeypatch.setenv("SST_ENABLED", "true")
     monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
