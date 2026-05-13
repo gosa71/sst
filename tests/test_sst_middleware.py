@@ -2,6 +2,7 @@
 
 import glob
 import json
+import time
 
 import pytest
 
@@ -171,3 +172,30 @@ def test_pii_masked_in_capture(tmp_path, monkeypatch):
     raw = open(files[0], encoding="utf-8").read()
     assert "customer@example.com" not in raw, "Email must be PII-masked in capture"
     assert "MASKED_EMAIL" in raw, "PII masking marker must be present"
+
+
+def test_large_response_body_assembly(tmp_path, monkeypatch):
+    monkeypatch.setenv("SST_ENABLED", "true")
+    monkeypatch.setenv("SST_STORAGE_DIR", str(tmp_path))
+
+    from sst.middleware import SSTMiddleware
+
+    payload = b"x" * (5 * 1024 * 1024)
+
+    async def large(request: Request):
+        return starlette.responses.Response(payload, media_type="application/octet-stream-test")
+
+    app = Starlette(routes=[Route("/large", large, methods=["GET"])])
+    app.add_middleware(SSTMiddleware)
+
+    client = TestClient(app)
+    t0 = time.perf_counter()
+    resp = client.get("/large")
+    elapsed = time.perf_counter() - t0
+
+    assert resp.status_code == 200
+    assert resp.content == payload
+
+    files = glob.glob(str(tmp_path / "*.json"))
+    assert len(files) == 1, "Large response should still be captured"
+    assert elapsed < 1.0
