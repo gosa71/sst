@@ -25,6 +25,7 @@ import logging
 import os
 import platform
 import socket
+from pathlib import Path
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Sequence
@@ -140,48 +141,45 @@ class SSTMiddleware(BaseHTTPMiddleware):
         """
         if self._core.verify_mode:
             return
-        try:
-            os.makedirs(self._core.storage_dir, exist_ok=True)
-            semantic_id = _Fingerprint.semantic_hash(masked_inputs)
-            now = datetime.now(timezone.utc)
-            payload = CapturePayload(
-                function=f"{method} {path}",
-                module="http",
-                semantic_id=semantic_id,
-                engine_version=__version__,
-                timestamp=now.isoformat(),
-                input=masked_inputs,
-                output=output_snapshot,
-                dependencies=[],
-                execution_metadata={
-                    "timestamp": now.isoformat(),
-                    "python_version": platform.python_version(),
-                    "hostname": socket.gethostname(),
-                },
-                dependency_capture={
-                    "network_calls": {"captured": False, "hook": "stub"},
-                    "database_calls": {"captured": False, "hook": "stub"},
-                },
-                source="",
-            )
-            safe_path = path.replace("/", "_")
-            pid = os.getpid()
-            filename = (
-                f"http.{method}{safe_path}_{semantic_id}_"
-                f"{pid}_"
-                f"{now.strftime('%H%M%S_%f')}.json"
-            )
-            payload_str = json.dumps(
-                asdict(payload),
-                indent=2,
-                sort_keys=True,
-                allow_nan=False,
-            )
-            fpath = os.path.join(self._core.storage_dir, filename)
-            with open(fpath, "w", encoding="utf-8") as f:
-                f.write(payload_str)
-        except Exception as write_err:
-            logger.warning("SST: Failed to write HTTP capture: %s", write_err)
+
+        os.makedirs(self._core.storage_dir, exist_ok=True)
+        semantic_id = _Fingerprint.semantic_hash(masked_inputs)
+        now = datetime.now(timezone.utc)
+        payload = CapturePayload(
+            function=f"{method} {path}",
+            module="http",
+            semantic_id=semantic_id,
+            engine_version=__version__,
+            timestamp=now.isoformat(),
+            input=masked_inputs,
+            output=output_snapshot,
+            dependencies=[],
+            execution_metadata={
+                "timestamp": now.isoformat(),
+                "python_version": platform.python_version(),
+                "hostname": socket.gethostname(),
+            },
+            dependency_capture={
+                "network_calls": {"captured": False, "hook": "stub"},
+                "database_calls": {"captured": False, "hook": "stub"},
+            },
+            source="",
+        )
+        safe_path = path.replace("/", "_")
+        pid = os.getpid()
+        filename = (
+            f"http.{method}{safe_path}_{semantic_id}_"
+            f"{pid}_"
+            f"{now.strftime('%H%M%S_%f')}.json"
+        )
+        payload_str = json.dumps(
+            asdict(payload),
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        fpath = Path(self._core.storage_dir) / filename
+        fpath.write_text(payload_str, encoding="utf-8")
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
@@ -208,47 +206,51 @@ class SSTMiddleware(BaseHTTPMiddleware):
 
         response: Response = await call_next(request)
 
-        resp_content_type = (
-            response.headers.get("content-type", "").split(";")[0].strip().lower()
-        )
-        if resp_content_type in _STREAMING_CONTENT_TYPES:
-            logger.warning(
-                "SST: Skipping capture for %s %s — streaming response (%s) not supported.",
-                request.method,
-                request.url.path,
-                resp_content_type,
+        try:
+            resp_content_type = (
+                response.headers.get("content-type", "").split(";")[0].strip().lower()
             )
+            if resp_content_type in _STREAMING_CONTENT_TYPES:
+                logger.warning(
+                    "SST: Skipping capture for %s %s — streaming response (%s) not supported.",
+                    request.method,
+                    request.url.path,
+                    resp_content_type,
+                )
+                return response
+
+            response_body = b""
+            async for chunk in response.body_iterator:
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                response_body += chunk
+
+            status_code = response.status_code
+            resp_ct = response.headers.get("content-type", "")
+
+            if 200 <= status_code < 300:
+                raw_result = self._parse_json_body(response_body, resp_ct)
+                masked_result = self._core._mask_pii(self._core._serialize(raw_result))
+                output_snapshot: CaptureOutput = {
+                    "status": "success",
+                    "raw_result": masked_result,
+                }
+            else:
+                error_text = response_body.decode("utf-8", errors="replace")[:500]
+                output_snapshot = {
+                    "status": "failure",
+                    "error_type": f"HTTP_{status_code}",
+                    "error": error_text,
+                }
+
+            self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
+
+            return Response(
+                content=response_body,
+                status_code=status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+        except Exception:
+            logger.exception("sst capture failed")
             return response
-
-        response_body = b""
-        async for chunk in response.body_iterator:
-            if isinstance(chunk, str):
-                chunk = chunk.encode("utf-8")
-            response_body += chunk
-
-        status_code = response.status_code
-        resp_ct = response.headers.get("content-type", "")
-
-        if 200 <= status_code < 300:
-            raw_result = self._parse_json_body(response_body, resp_ct)
-            masked_result = self._core._mask_pii(self._core._serialize(raw_result))
-            output_snapshot: CaptureOutput = {
-                "status": "success",
-                "raw_result": masked_result,
-            }
-        else:
-            error_text = response_body.decode("utf-8", errors="replace")[:500]
-            output_snapshot = {
-                "status": "failure",
-                "error_type": f"HTTP_{status_code}",
-                "error": error_text,
-            }
-
-        self._write_http_capture(request.method, path, masked_inputs, output_snapshot)
-
-        return Response(
-            content=response_body,
-            status_code=status_code,
-            headers=dict(response.headers),
-            media_type=response.media_type,
-        )
